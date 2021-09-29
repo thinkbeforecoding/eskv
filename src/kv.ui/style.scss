@@ -1,0 +1,28 @@
+﻿
+@import "./node_modules/bulma/bulma.sass";
+@import "./node_modules/@creativebulma/bulma-tooltip/src/sass/index.sass";
+
+.key {
+    padding-bottom: .5em;
+    padding-left: .75em;
+    padding-right: .75em;
+    padding-top: .5em;
+}
+
+.editable {
+    border-color: #dbdbdb;
+    border-radius: 4px;
+    border-color: transparent;
+    padding-bottom: calc(.5em - 1px);
+    padding-left: calc(.75em - 1px);
+    padding-right: calc(.75em - 1px);
+    padding-top: calc(.5em - 1px);
+    border-style: solid;
+}
+
+.editable:hover {
+    cursor: pointer;
+    border-color: #dbdbdb;
+
+}
+
