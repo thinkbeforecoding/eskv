@@ -1,0 +1,5 @@
+{
+  "dependencies": {
+    "kv.ui": "file:src/kv.ui"
+  }
+}

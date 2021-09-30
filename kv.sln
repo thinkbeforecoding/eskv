@@ -9,7 +9,12 @@ Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "kv", "src\kv\kv.fsproj", "{
 EndProject
 Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "kv.ui", "src\kv.ui\kv.ui.fsproj", "{A431F330-32B4-4412-AC2D-F43D96982E08}"
 EndProject
-Project("{F2A71F9B-5D33-465A-A702-920D77279786}") = "kv.client", "kv.client\kv.client.fsproj", "{42EF2EDD-B484-4471-B1D3-201AC6929089}"
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = ".build", ".build", "{C8B3D20A-DB2F-454F-BBC4-6B994702F886}"
+	ProjectSection(SolutionItems) = preProject
+		build.cmd = build.cmd
+	EndProjectSection
+EndProject
+Project("{6EC3EE1D-3C4E-46DD-8F32-0CC8E7565705}") = "kv.client", "src\kv.client\kv.client.fsproj", "{1F6CEF04-B8AA-4E82-8A7F-655B6DA83C07}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -25,10 +30,10 @@ Global
 		{A431F330-32B4-4412-AC2D-F43D96982E08}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{A431F330-32B4-4412-AC2D-F43D96982E08}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{A431F330-32B4-4412-AC2D-F43D96982E08}.Release|Any CPU.Build.0 = Release|Any CPU
-		{42EF2EDD-B484-4471-B1D3-201AC6929089}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{42EF2EDD-B484-4471-B1D3-201AC6929089}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{42EF2EDD-B484-4471-B1D3-201AC6929089}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{42EF2EDD-B484-4471-B1D3-201AC6929089}.Release|Any CPU.Build.0 = Release|Any CPU
+		{1F6CEF04-B8AA-4E82-8A7F-655B6DA83C07}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1F6CEF04-B8AA-4E82-8A7F-655B6DA83C07}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1F6CEF04-B8AA-4E82-8A7F-655B6DA83C07}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1F6CEF04-B8AA-4E82-8A7F-655B6DA83C07}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -36,7 +41,7 @@ Global
 	GlobalSection(NestedProjects) = preSolution
 		{B2AA742B-3205-4445-8BFA-D8159555E679} = {FE12110D-0CFE-45ED-927C-E0360362A3B9}
 		{A431F330-32B4-4412-AC2D-F43D96982E08} = {FE12110D-0CFE-45ED-927C-E0360362A3B9}
-		{42EF2EDD-B484-4471-B1D3-201AC6929089} = {FE12110D-0CFE-45ED-927C-E0360362A3B9}
+		{1F6CEF04-B8AA-4E82-8A7F-655B6DA83C07} = {FE12110D-0CFE-45ED-927C-E0360362A3B9}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {0AA59D48-B93A-4F8F-BC62-FAA52AA3E7A9}

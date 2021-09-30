@@ -16,7 +16,8 @@
       }
     },
     "kv": {
-      "commandName": "Project"
+      "commandName": "Project",
+      "commandLineArgs": "--dev"
     }
   }
 }

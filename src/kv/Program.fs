@@ -13,6 +13,28 @@ open Thoth.Json.Net
 open Shared
 open Microsoft.AspNetCore.WebUtilities
 open Microsoft.Net.Http.Headers
+open Microsoft.Extensions.FileProviders
+open Argu
+open System.Net.Http
+
+
+type Cmd =
+    | Dev
+    | Parcel of string
+    | EndPoint of string
+    with
+    interface IArgParserTemplate with
+        member this.Usage =
+            match this with
+            | Dev -> "specify dev mode."
+            | Parcel _ -> "parcel dev server url. default is http://localhost:1234"
+            | EndPoint _ -> "kv http listener endpoint. default is http://localhost:5000"
+
+
+let cmd = ArgumentParser.Create<Cmd>().ParseCommandLine()
+let isDevMode = cmd.Contains Dev
+let parcelUrl = cmd.TryGetResult Parcel |> Option.defaultValue "http://localhost:1234"
+let endpoint = cmd.TryGetResult EndPoint |> Option.defaultValue "http://localhost:5000"
 
 module Etag =
     let ofBytes (data: byte[]) =
@@ -59,10 +81,17 @@ let send (ws: WebSocket) msg =
       do! ws.SendAsync(payload.AsMemory(),WebSocketMessageType.Text,true,cts.Token)
       }
 
-let builder = WebApplication.CreateBuilder();
+let builder = WebApplication.CreateBuilder()
+
+if not isDevMode then
+    let webroot = IO.Path.Combine(builder.Environment.ContentRootPath, "content")
+    builder.Environment.WebRootPath <- webroot
+    builder.Environment.WebRootFileProvider <- new PhysicalFileProvider(webroot)
 
 let app = builder.Build()
 app.UseWebSockets() |> ignore
+if not isDevMode then
+    app.UseStaticFiles("/content") |> ignore
 
 let index = """<!DOCTYPE html>
 <html>
@@ -81,15 +110,13 @@ let index = """<!DOCTYPE html>
 
 </html>
 """
-    //<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bulma@0.9.3/css/bulma.min.css">
-    //<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@creativebulma/bulma-tooltip@1.2.0/dist/bulma-tooltip.min.css">
  
 app.MapGet("/", fun ctx ->
     task {
-        if ctx.WebSockets.IsWebSocketRequest then
+        if isDevMode && ctx.WebSockets.IsWebSocketRequest then
             let! ws = ctx.WebSockets.AcceptWebSocketAsync()
             let upstream = new ClientWebSocket()
-            do! upstream.ConnectAsync(Uri "ws://localhost:1234", cts.Token)
+            do! upstream.ConnectAsync(UriBuilder(parcelUrl,Scheme="ws://").Uri, cts.Token)
             
             let cp1 = task {
                 use mem = MemoryPool.Shared.Rent(4096)
@@ -109,24 +136,29 @@ app.MapGet("/", fun ctx ->
 
             do! Task.WhenAll [|cp1 :> Task;cp2|]
         else
-
             ctx.Response.Headers.ContentType <- "text/html"
             do! ctx.Response.WriteAsync(index)
         } :> Task) |> ignore
 
-app.MapGet("/content/App.fs.js", fun ctx ->
-    task {
-        ctx.Response.Headers.ContentType <- "application/javascript"
-        use stream = IO.File.Open(@"C:\dev\kv\src\kv.ui\dist\App.fs.js", IO.FileMode.Open, IO.FileAccess.Read, IO.FileShare.ReadWrite)
-        do! stream.CopyToAsync(ctx.Response.Body)
-    } :> Task)  |> ignore
+if isDevMode then
+    app.MapGet("/content/{**path}", fun ctx ->
+        task {
+            let path = ctx.Request.RouteValues.["path"] |> string
 
-app.MapGet("/content/style.css", fun ctx ->
-    task {
-        ctx.Response.Headers.ContentType <- "text/css"
-        use stream = IO.File.Open(@"C:\dev\kv\src\kv.ui\dist\style.css", IO.FileMode.Open, IO.FileAccess.Read, IO.FileShare.ReadWrite)
-        do! stream.CopyToAsync(ctx.Response.Body)
-    } :> Task)  |> ignore
+            let client = new HttpClient()
+            use! response = client.GetAsync(UriBuilder(parcelUrl,Path=path).Uri)
+            
+            for h in response.Headers do
+                ctx.Response.Headers.Add(h.Key,StringValues(Seq.toArray h.Value))
+
+            do! response.Content.CopyToAsync(ctx.Response.Body)
+
+            
+        } :> Task
+    
+    ) |> ignore
+
+
 app.MapGet("/kv/",  Func<HttpContext, obj>( fun ctx ->
                 [| for k in data.Keys -> k |] )) |> ignore
 
@@ -302,7 +334,7 @@ app.MapPost("/es/{stream}", fun ctx ->
     } :> Task
 ) |> ignore
 
-app.Run("http://*:5000");
+app.Run(endpoint);
 
 
 

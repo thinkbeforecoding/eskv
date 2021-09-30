@@ -13,8 +13,6 @@ open Browser
 open Shared
 
 
-
-
 type Editing = 
     { Key: Key
       Value: string
@@ -408,7 +406,8 @@ open Elmish.HMR
 
 let ws model =
     let sub dispatch =
-        let ws = WebSocket.Create("ws://localhost:5000/ws")
+        let loc = window.location
+        let ws = WebSocket.Create($"ws://{loc.hostname}:{loc.port}/ws")
         ws.onmessage <- ( fun e ->
         
          match Thoth.Json.Decode.Auto.fromString<ServerCmd>(string e.data)  with

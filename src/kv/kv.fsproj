@@ -4,6 +4,8 @@
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
     <LangVersion>preview</LangVersion>
+    <IsPackable>true</IsPackable>
+    <PackAsTool>true</PackAsTool>
   </PropertyGroup>
 
   <!--<ItemGroup>
@@ -15,15 +17,28 @@
     <Reference Include="Microsoft.AspNetCore.Server.Kestrel" />
   </ItemGroup>-->
   <ItemGroup>
+    <Content Include="..\kv.ui\dist\style.css" Link="content\style.css">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <Content Include="..\kv.ui\dist\App.fs.js" Link="content\App.fs.js">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </Content>
+    <None Include="..\kv.ui\dist\App.fs.js.map" Link="content\App.fs.js.map" />
+    <None Include="..\kv.ui\dist\style.css.map" Link="content\style.css.map" />
     <Compile Include="..\kv.ui\Shared.fs" Link="Shared.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
+    <PackageReference Include="Argu" Version="6.1.1" />
     <PackageReference Include="Microsoft.AspNetCore.SignalR.Protocols.Json" Version="5.0.10" />
     <PackageReference Include="Thoth.Json.Net" Version="7.1.0" />
   </ItemGroup>
   <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="6.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="content\" />
+  </ItemGroup>
+  <ItemGroup />
 
 </Project>
