@@ -10,16 +10,22 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\eskv.ui\dist\style.css" Link="content\style.css">
+    <Content Remove="wwwroot\index.html" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="..\eskv.ui\dist\style.css" Link="wwwroot\content\style.css">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
-    <EmbeddedResource Include="..\eskv.ui\dist\App.fs.js" Link="content\App.fs.js">
+    <EmbeddedResource Include="..\eskv.ui\dist\App.fs.js" Link="wwwroot\content\App.fs.js">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
-    <None Include="..\eskv.ui\dist\App.fs.js.map" Link="content\App.fs.js.map" />
-    <None Include="..\eskv.ui\dist\style.css.map" Link="content\style.css.map" />
+    <EmbeddedResource Include="wwwroot\index.html" />
+    <None Include="..\eskv.ui\dist\App.fs.js.map" Link="wwwroot\content\App.fs.js.map" />
+    <None Include="..\eskv.ui\dist\style.css.map" Link="wwwroot\content\style.css.map" />
     <None Include="Properties\launchSettings.json" />
     <Compile Include="..\eskv.ui\Shared.fs" Link="Shared.fs" />
+    <Compile Include="AspNetExtensions.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>
@@ -31,7 +37,7 @@
     <PackageReference Update="FSharp.Core" Version="6.0.0" />
   </ItemGroup>
   <ItemGroup>
-    <Folder Include="content\" />
+    <Folder Include="wwwroot\content\" />
   </ItemGroup>
 
 </Project>

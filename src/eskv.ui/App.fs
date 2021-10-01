@@ -164,7 +164,7 @@ let view model dispatch =
                                          ]
                         ]
                         Html.div [
-                            prop.text "in memory key value store"
+                            prop.text "in memory event stream / key value store."
                             prop.style [ style.marginTop (length.em 3)
                                          style.marginLeft (length.em -2.7)
                                          style.fontStyle.italic
@@ -223,19 +223,11 @@ let view model dispatch =
 
         ]
 
-        Html.div [
-        ]
 
         Bulma.panel [
-            Bulma.panelHeading [
-                Bulma.level [
-                    Bulma.levelLeft [
-                        Bulma.levelItem [
-                            prop.text "Entries"
-                        ]   
-                    ]
-                ]
-            ]
+            Bulma.panelHeading [ 
+                Bulma.text.hasTextCentered
+                prop.text "Entries" ]
 
             if Map.isEmpty model.Keys then
                 Bulma.panelBlock.div [
@@ -363,37 +355,32 @@ let view model dispatch =
                 ]
         ]
         Bulma.panel [
-                  Bulma.panelHeading [
-                      Bulma.level [
-                          Bulma.levelLeft [
-                              Bulma.levelItem [
-                                  prop.text "Streams"
-                              ]   
-                          ]
-                      ]
-                  ]
-                  for streamid, stream in Map.toList model.Streams do
-                    Bulma.panelBlock.div [
-                        prop.style [ style.flexDirection.column ]
-                        prop.children [
-                            for t,d in stream do
-                                Bulma.columns [
-                                    prop.style [ style.width (length.percent 100)
-                                                 style.verticalAlign.middle]
-                                    prop.children [
-                                        Bulma.column [
-                                            prop.text streamid
-                                        ]
-                                        Bulma.column [
-                                            prop.text t
-                                        ]
-                                        Bulma.column [
-                                            prop.text d
-                                        ]
+            Bulma.panelHeading [
+                Bulma.text.hasTextCentered
+                prop.text "Streams"
+            ]
+            for streamid, stream in Map.toList model.Streams do
+                Bulma.panelBlock.div [
+                    prop.style [ style.flexDirection.column ]
+                    prop.children [
+                        for t,d in stream do
+                            Bulma.columns [
+                                prop.style [ style.width (length.percent 100)
+                                             style.verticalAlign.middle]
+                                prop.children [
+                                    Bulma.column [
+                                        prop.text streamid
                                     ]
-                                 ]
-                        ]
+                                    Bulma.column [
+                                        prop.text t
+                                    ]
+                                    Bulma.column [
+                                        prop.text d
+                                    ]
+                                ]
+                             ]
                     ]
+                ]
 
 
 

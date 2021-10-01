@@ -16,7 +16,7 @@ open Microsoft.Net.Http.Headers
 open Microsoft.Extensions.FileProviders
 open Argu
 open System.Net.Http
-
+open AspNetExtensions
 
 type Cmd =
     | Dev
@@ -50,8 +50,6 @@ type Entry =
         member this.Equals(other) =
             this.Etag = other.Etag
         
-type Microsoft.AspNetCore.Http.HttpContext with
-    member this.GetService<'t>() = this.RequestServices.GetService(typeof<'t>) :?> 't
 
 let cts = new CancellationTokenSource()
 let data = ConcurrentDictionary<Key, Entry>()
@@ -84,83 +82,31 @@ let send (ws: WebSocket) msg =
 let builder = WebApplication.CreateBuilder()
 
 if not isDevMode then
-    //let webroot = IO.Path.Combine(builder.Environment.ContentRootPath, "content")
-    //builder.Environment.WebRootPath <- webroot
-    //builder.Environment.WebRootFileProvider <- new PhysicalFileProvider(webroot)
-    builder.Environment.WebRootFileProvider <- new EmbeddedFileProvider(Reflection.Assembly.GetExecutingAssembly(),"eskv.content")
+    builder.Environment.WebRootFileProvider <- new EmbeddedFileProvider(Reflection.Assembly.GetExecutingAssembly(),"eskv.wwwroot")
 
 let app = builder.Build()
 app.UseWebSockets() |> ignore
 if not isDevMode then
-    app.UseStaticFiles("/content") |> ignore
+    app.UseStaticFiles().UseDefaultFiles() |> ignore
 
-let index = """<!DOCTYPE html>
-<html>
-<head>
-    <title>kv</title>
-    <meta charset="utf-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1">
-    <link rel="stylesheet" href="content/style.css">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/5.14.0/css/all.min.css">
-    <script type="application/javascript" src="content/App.fs.js"></script>
-</head>
-<body>
-    <div id="elmish-app">
-    </div>
-</body>
-
-</html>
-"""
- 
-app.MapGet("/", fun ctx ->
-    task {
+app.MapGet("/", fun  (ctx: HttpContext) ->
         if isDevMode && ctx.WebSockets.IsWebSocketRequest then
-            let! ws = ctx.WebSockets.AcceptWebSocketAsync()
-            let upstream = new ClientWebSocket()
-            do! upstream.ConnectAsync(UriBuilder(parcelUrl,Scheme="ws://").Uri, cts.Token)
-            
-            let cp1 = task {
-                use mem = MemoryPool.Shared.Rent(4096)
-                while true do
-                    let! result = upstream.ReceiveAsync(mem.Memory,cts.Token)
-                    do! ws.SendAsync(mem.Memory.Slice(0,result.Count), result.MessageType, result.EndOfMessage, cts.Token)
-                    
-            }
-
-            let cp2 = task {
-                use mem = MemoryPool.Shared.Rent(4096)
-                while true do
-                    let! result = ws.ReceiveAsync(mem.Memory,cts.Token)
-                    do! upstream.SendAsync(mem.Memory.Slice(0,result.Count), result.MessageType, result.EndOfMessage, cts.Token)
-                    
-            }
-
-            do! Task.WhenAll [|cp1 :> Task;cp2|]
+            ctx.ProxyWebSocketAsync( UriBuilder(parcelUrl,Scheme="ws://").Uri, cts.Token)
         else
             ctx.Response.Headers.ContentType <- "text/html"
-            do! ctx.Response.WriteAsync(index)
-        } :> Task) |> ignore
+            ctx.Response.SendWebFileAsync("index.html")
+        )
+        |> ignore
+
 
 if isDevMode then
     app.MapGet("/content/{**path}", fun ctx ->
-        task {
             let path = ctx.Request.RouteValues.["path"] |> string
-
-            let client = new HttpClient()
-            use! response = client.GetAsync(UriBuilder(parcelUrl,Path=path).Uri)
-            
-            for h in response.Headers do
-                ctx.Response.Headers.Add(h.Key,StringValues(Seq.toArray h.Value))
-
-            do! response.Content.CopyToAsync(ctx.Response.Body)
-
-            
-        } :> Task
-    
+            ctx.Response.ProxyGetAsync(UriBuilder(parcelUrl,Path=path).Uri)
     ) |> ignore
 
 
-app.MapGet("/kv/",  Func<HttpContext, obj>( fun ctx ->
+app.MapGet("/kv/",  Func<_, _>( fun _ ->
                 [| for k in data.Keys -> k |] )) |> ignore
 
 
@@ -256,46 +202,45 @@ app.MapDelete("/kv/{key}", fun ctx ->
 
             } :> Task
 ) |> ignore
+
 app.MapGet("/ws", fun ctx ->
     task {
-        if ctx.Request.Path = PathString "/ws" then
            if ctx.WebSockets.IsWebSocketRequest then
-                  let! webSocket = ctx.WebSockets.AcceptWebSocketAsync()
-                  
-                  sessions.TryAdd(webSocket, obj()) |> ignore
-                  //do! webSocket.SendAsync("Hello"B.AsMemory(),WebSocketMessageType.Text, true, cts.Token )
+              let! webSocket = ctx.WebSockets.AcceptWebSocketAsync()
+              
+              sessions.TryAdd(webSocket, obj()) |> ignore
 
-                  let msg =
-                      data
-                      |> Seq.filter (fun kv ->  kv.Value.Etag.Length <> 0 )
-                      |> Seq.map (fun (KeyValue(k,v)) -> k, (Text.Encoding.UTF8.GetString(v.Bytes), v.Etag))
-                      |> Seq.toList
-                      |> Shared.KeysLoaded
+              let msg =
+                  data
+                  |> Seq.filter (fun kv ->  kv.Value.Etag.Length <> 0 )
+                  |> Seq.map (fun (KeyValue(k,v)) -> k, (Text.Encoding.UTF8.GetString(v.Bytes), v.Etag))
+                  |> Seq.toList
+                  |> Shared.KeysLoaded
 
-               
+           
 
-                  do! send webSocket msg
+              do! send webSocket msg
 
-                  let msg = 
-                   [ for KeyValue(streamId, events) in streams do
-                         { Id = streamId; Events = [ for e in events -> e.Type,  e.Data ]} ]
-                  
-                  do! send webSocket (StreamLoaded msg)
+              let msg = 
+               [ for KeyValue(streamId, events) in streams do
+                     { Id = streamId; Events = [ for e in events -> e.Type,  e.Data ]} ]
+              
+              do! send webSocket (StreamLoaded msg)
 
-                  let buffer = MemoryPool<byte>.Shared.Rent(4096)
-                  let mutable closed = false
-                  while not closed do
+              let buffer = MemoryPool<byte>.Shared.Rent(4096)
+              let mutable closed = false
+              while not closed do
 
-                    try
-                      let! result = webSocket.ReceiveAsync(buffer.Memory, cts.Token)
-                      ()
-                    with
-                    | _ -> 
-                        sessions.TryRemove(webSocket) |> ignore
-                        closed <- true
-                  
-              else
-                  ctx.Response.StatusCode <- 400
+                try
+                  let! result = webSocket.ReceiveAsync(buffer.Memory, cts.Token)
+                  ()
+                with
+                | _ -> 
+                    sessions.TryRemove(webSocket) |> ignore
+                    closed <- true
+              
+          else
+              ctx.Response.StatusCode <- 400
     } :> Task
 ) |> ignore
 
