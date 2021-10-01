@@ -457,4 +457,4 @@ $RECYCLE.BIN/
 *.fs.js
 
 .parcel-cache/
-src/kv.ui/dist/
+src/eskv.ui/dist/

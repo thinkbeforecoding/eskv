@@ -5,7 +5,10 @@ if exist ./bin ( rmdir .\bin /q /s )
 dotnet tool restore
 dotnet restore
 
-npm install .\src\kv.ui
-dotnet fable -w .\src\kv.ui --noRestore
-npm exec --prefix ./src/kv.ui/ parcel -- build ./src/kv.ui/App.fs.js ./src/kv.ui/style.scss
+
+call npm ci  --prefix .\src\eskv.ui\
+
+
+dotnet fable .\src\eskv.ui\eskv.ui.fsproj  -w .\src\eskv.ui --noRestore
+call npm exec --prefix ./src/eskv.ui/ parcel -- build ./src/eskv.ui/App.fs.js ./src/eskv.ui/style.scss
 dotnet pack -c Release -o bin/nuget --no-restore

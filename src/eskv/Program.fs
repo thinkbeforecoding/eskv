@@ -84,9 +84,10 @@ let send (ws: WebSocket) msg =
 let builder = WebApplication.CreateBuilder()
 
 if not isDevMode then
-    let webroot = IO.Path.Combine(builder.Environment.ContentRootPath, "content")
-    builder.Environment.WebRootPath <- webroot
-    builder.Environment.WebRootFileProvider <- new PhysicalFileProvider(webroot)
+    //let webroot = IO.Path.Combine(builder.Environment.ContentRootPath, "content")
+    //builder.Environment.WebRootPath <- webroot
+    //builder.Environment.WebRootFileProvider <- new PhysicalFileProvider(webroot)
+    builder.Environment.WebRootFileProvider <- new EmbeddedFileProvider(Reflection.Assembly.GetExecutingAssembly(),"eskv.content")
 
 let app = builder.Build()
 app.UseWebSockets() |> ignore

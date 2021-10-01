@@ -156,7 +156,7 @@ let view model dispatch =
                 prop.children [
                     Bulma.navbarItem.div [
                         Html.div [
-                            prop.text "kv"
+                            prop.text "eskv"
 
                             prop.style [ style.fontSize (length.em 3)
                                          style.fontWeight.bold
