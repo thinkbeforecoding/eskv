@@ -166,7 +166,7 @@ let view model dispatch =
                         Html.div [
                             prop.text "in memory event stream / key value store."
                             prop.style [ style.marginTop (length.em 3)
-                                         style.marginLeft (length.em -2.7)
+                                         style.marginLeft (length.em -5)
                                          style.fontStyle.italic
                                          ]
 

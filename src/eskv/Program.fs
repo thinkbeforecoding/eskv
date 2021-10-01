@@ -15,7 +15,6 @@ open Microsoft.AspNetCore.WebUtilities
 open Microsoft.Net.Http.Headers
 open Microsoft.Extensions.FileProviders
 open Argu
-open System.Net.Http
 open AspNetExtensions
 
 type Cmd =
@@ -45,7 +44,7 @@ module Etag =
 type Entry =
     { Etag: ETag 
       Bytes: byte[]
-      ContentType: StringValues }
+      ContentType: string }
     interface IEquatable<Entry> with
         member this.Equals(other) =
             this.Etag = other.Etag
@@ -56,7 +55,8 @@ let data = ConcurrentDictionary<Key, Entry>()
 
 type EventData =
     { Type: string 
-      Data: string }
+      Data: byte[]
+      ContentType: string }
 
 let streams = ConcurrentDictionary<string, ConcurrentQueue<EventData>>()
 
@@ -133,7 +133,7 @@ app.MapPut("/kv/{key}", fun ctx ->
     task {
         let key = ctx.Request.RouteValues.["key"] |> string
 
-        let contentType = ctx.Request.Headers.ContentType
+        let contentType = ctx.Request.ContentType
         let length = ctx.Request.Headers.ContentLength
         let! result = 
             if length.HasValue then
@@ -160,7 +160,7 @@ app.MapPut("/kv/{key}", fun ctx ->
         else 
             let etags = ctx.Request.Headers.IfMatch
             if etags.Count = 1 then
-                if data.TryUpdate(key,{ Etag = newEtag ; Bytes = bytes; ContentType = contentType }, { Etag = etags.[0]; Bytes = null; ContentType = StringValues.Empty }) then
+                if data.TryUpdate(key,{ Etag = newEtag ; Bytes = bytes; ContentType = contentType }, { Etag = etags.[0]; Bytes = null; ContentType = null }) then
                     ctx.Response.StatusCode <- 204
                     ctx.Response.Headers.ETag <-  newEtag
                     do! publish (Shared.KeyChanged(key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
@@ -185,7 +185,7 @@ app.MapDelete("/kv/{key}", fun ctx ->
 
         let etags = ctx.Request.Headers.IfMatch
         if etags.Count = 1 then
-            if data.TryUpdate(key,{ Etag = "" ; Bytes = null; ContentType = StringValues.Empty },{ Etag = etags.[0]; Bytes = null; ContentType = StringValues.Empty }) then
+            if data.TryUpdate(key,{ Etag = "" ; Bytes = null; ContentType = null },{ Etag = etags.[0]; Bytes = null; ContentType = null }) then
                 data.TryRemove(key) |> ignore
                 ctx.Response.StatusCode <- 204
                 do! publish (Shared.KeyDeleted(key))
@@ -203,6 +203,23 @@ app.MapDelete("/kv/{key}", fun ctx ->
             } :> Task
 ) |> ignore
 
+
+
+let decode (bytes: byte[]) (contentType: string) =
+    match System.Net.Http.Headers.MediaTypeHeaderValue.TryParse(contentType) with
+    | true, ct ->
+        if ct.MediaType.StartsWith("text/") then
+            Text.Encoding.UTF8.GetString(bytes)
+        else
+            match contentType with
+            | "application/json"
+            | "application/xml" -> 
+                Text.Encoding.UTF8.GetString(bytes)
+            | _ -> null
+        
+
+    | _ -> null
+
 app.MapGet("/ws", fun ctx ->
     task {
            if ctx.WebSockets.IsWebSocketRequest then
@@ -213,7 +230,7 @@ app.MapGet("/ws", fun ctx ->
               let msg =
                   data
                   |> Seq.filter (fun kv ->  kv.Value.Etag.Length <> 0 )
-                  |> Seq.map (fun (KeyValue(k,v)) -> k, (Text.Encoding.UTF8.GetString(v.Bytes), v.Etag))
+                  |> Seq.map (fun (KeyValue(k,v)) -> k, (decode v.Bytes v.ContentType, v.Etag))
                   |> Seq.toList
                   |> Shared.KeysLoaded
 
@@ -223,7 +240,7 @@ app.MapGet("/ws", fun ctx ->
 
               let msg = 
                [ for KeyValue(streamId, events) in streams do
-                     { Id = streamId; Events = [ for e in events -> e.Type,  e.Data ]} ]
+                     { Id = streamId; Events = [ for e in events -> e.Type, decode e.Data e.ContentType ]} ]
               
               do! send webSocket (StreamLoaded msg)
 
@@ -260,9 +277,15 @@ app.MapPost("/es/{stream}", fun ctx ->
             if isNull section then
                 quit <- true
             else
-                let eventType = section.Headers.["X-Event-Type"].[0]
-                let! data = section.ReadAsStringAsync()
-                events.Add { Type = eventType; Data = data }
+                let eventType = section.Headers.["ESKV-Event-Type"].[0]
+                
+                let! data = 
+                    task { 
+                        use memory = new IO.MemoryStream()
+                        do! section.Body.CopyToAsync(memory)
+                        return memory.ToArray()
+                    }
+                events.Add { Type = eventType; Data = data; ContentType = section.ContentType }
                 
 
         let stream = streams.GetOrAdd(streamId,fun _ -> ConcurrentQueue())
@@ -271,7 +294,7 @@ app.MapPost("/es/{stream}", fun ctx ->
                 stream.Enqueue(e)
         )
 
-        do! publish (StreamUpdated { Id = streamId; Events = [ for e in events -> e.Type,  e.Data ]})
+        do! publish (StreamUpdated { Id = streamId; Events = [ for e in events -> e.Type,  decode e.Data e.ContentType ]})
 
         ctx.Response.StatusCode <- 204
                 
@@ -281,7 +304,3 @@ app.MapPost("/es/{stream}", fun ctx ->
 ) |> ignore
 
 app.Run(endpoint);
-
-
-
-
