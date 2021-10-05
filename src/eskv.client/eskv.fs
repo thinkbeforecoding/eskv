@@ -37,7 +37,7 @@ type Client(uri: Uri) =
             let! response  = client.GetAsync(Uri(kv, key))
             match response.StatusCode with
             | HttpStatusCode.NotFound ->
-                return struct(null, None)
+                return null, None
             | Http.Success ->
                 let etag = 
                     match response.Headers.ETag with
@@ -46,7 +46,7 @@ type Client(uri: Uri) =
                 let! data = response.Content.ReadAsStringAsync()
 
 
-                return struct(etag, Some data)
+                return etag, Some data
             | _ ->
                 return raiseHttpException(response)
 
@@ -56,7 +56,7 @@ type Client(uri: Uri) =
 
     member this.TryLoad(key) = this.TryLoadAsync(key).Result
 
-    member _.TrySaveStringAsync(key: string, value: string, etag: string) =
+    member _.TrySaveAsync(key: string, value: string, etag: string) =
         task {
             use client = new HttpClient()
             if not (isNull etag) then
@@ -76,9 +76,9 @@ type Client(uri: Uri) =
                 
         }
 
-    member this.TrySaveString(key, value, etag) = this.TrySaveStringAsync(key, value, etag).Result
+    member this.TrySave(key, value, etag) = this.TrySaveAsync(key, value, etag).Result
 
-    member _.SaveStringAsync(key: string, value: string) =
+    member _.SaveAsync(key: string, value: string) =
         task {
             use client = new HttpClient()
 
@@ -87,7 +87,8 @@ type Client(uri: Uri) =
                 return raiseHttpException(response)
         } :> Task
 
-    member this.SaveString(key, value) = this.SaveStringAsync(key, value).Wait()
+    member this.SaveS(key, value) = this.SaveAsync(key, value).Wait()
+
 
 
     member _.AppendAsync(stream: string, events) =
