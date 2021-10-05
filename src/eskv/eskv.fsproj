@@ -26,6 +26,7 @@
     <None Include="Properties\launchSettings.json" />
     <Compile Include="..\eskv.ui\Shared.fs" Link="Shared.fs" />
     <Compile Include="AspNetExtensions.fs" />
+    <Compile Include="Streams.fs" />
     <Compile Include="Program.fs" />
   </ItemGroup>
   <ItemGroup>

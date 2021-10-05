@@ -43,7 +43,7 @@ type Model =
       Saving: bool
       Keys: Map<string, string*ETag>
       Editing: EditState
-      Streams: Map<string, (string*string) list> 
+      Events: (string * int * string*string) list 
       }
 let init() =
     { NewKey = ""
@@ -51,7 +51,7 @@ let init() =
       Saving = false
       Keys = Map.empty
       Editing = NoEdit
-      Streams = Map.empty }, Cmd.none
+      Events = []  }, Cmd.none
 
 let update (command: Command) (model: Model)  =
     match command with
@@ -127,16 +127,15 @@ let update (command: Command) (model: Model)  =
             Keys = Map.ofList keys}, Cmd.none
     | Server (Shared.StreamUpdated stream ) ->
         { model with
-            Streams = 
-                match Map.tryFind stream.Id model.Streams with
-                | None -> Map.add stream.Id stream.Events model.Streams
-                | Some evts -> Map.add stream.Id (evts @ stream.Events) model.Streams
+            Events =
+                model.Events @
+                 [ for e in stream -> e.StreamId, e.EventNumber, e.EventType, e.EventData ]
         }, Cmd.none
-    | Server (Shared.StreamLoaded streams ) ->
+    | Server (Shared.StreamLoaded events ) ->
         { model with
-            Streams = streams
-                      |> List.map (fun s -> s.Id, s.Events)
-                      |> Map.ofList
+            Events = events
+                      |> Seq.map (fun s -> s.StreamId, s.EventNumber, s.EventType, s.EventData)
+                      |> Seq.toList
         }, Cmd.none
 
 
@@ -359,28 +358,30 @@ let view model dispatch =
                 Bulma.text.hasTextCentered
                 prop.text "Streams"
             ]
-            for streamid, stream in Map.toList model.Streams do
-                Bulma.panelBlock.div [
-                    prop.style [ style.flexDirection.column ]
-                    prop.children [
-                        for t,d in stream do
-                            Bulma.columns [
-                                prop.style [ style.width (length.percent 100)
-                                             style.verticalAlign.middle]
-                                prop.children [
-                                    Bulma.column [
-                                        prop.text streamid
-                                    ]
-                                    Bulma.column [
-                                        prop.text t
-                                    ]
-                                    Bulma.column [
-                                        prop.text d
-                                    ]
+            Bulma.panelBlock.div [
+                prop.style [ style.flexDirection.column ]
+                prop.children [
+                    for streamid, eventNumber, eventType, eventData in model.Events do
+                        Bulma.columns [
+                            prop.style [ style.width (length.percent 100)
+                                         style.verticalAlign.middle]
+                            prop.children [
+                                Bulma.column [
+                                    prop.text streamid
                                 ]
-                             ]
-                    ]
+                                Bulma.column [
+                                    prop.text eventNumber
+                                ]
+                                Bulma.column [
+                                    prop.text eventType
+                                ]
+                                Bulma.column [
+                                    prop.text eventData
+                                ]
+                            ]
+                         ]
                 ]
+            ]
 
 
 

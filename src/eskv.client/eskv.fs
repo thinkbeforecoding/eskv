@@ -22,8 +22,8 @@ module private Http =
             Failure
 
 type Client(uri: Uri) =
-    let kv = Uri(uri, "kv")
-    let es = Uri(uri, "es")
+    let kv = Uri(uri, "kv/")
+    let es = Uri(uri, "es/")
 
     let raiseHttpException(response: HttpResponseMessage) =
         raise (HttpRequestException(response.ReasonPhrase, null, Nullable response.StatusCode))
@@ -107,6 +107,9 @@ type Client(uri: Uri) =
                 return raiseHttpException(response)
             
         } :> Task
+
+
+    member this.Append(stream: string, events) = this.AppendAsync(stream, events).Wait()
 
 
 

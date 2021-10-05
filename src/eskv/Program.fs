@@ -16,6 +16,7 @@ open Microsoft.Net.Http.Headers
 open Microsoft.Extensions.FileProviders
 open Argu
 open AspNetExtensions
+open Streams
 
 type Cmd =
     | Dev
@@ -53,12 +54,19 @@ type Entry =
 let cts = new CancellationTokenSource()
 let data = ConcurrentDictionary<Key, Entry>()
 
-type EventData =
-    { Type: string 
-      Data: byte[]
-      ContentType: string }
+//type EventData =
+//    { Type: string 
+//      Data: byte[]
+//      ContentType: string }
 
-let streams = ConcurrentDictionary<string, ConcurrentQueue<EventData>>()
+//let streams = ConcurrentDictionary<string, ResizeArray<EventData>>()
+
+//type AllStreamData =
+//    { Stream: string
+//      Position: int
+//      Event: EventData
+//    }
+//let allStream = ResizeArray<EventData>()
 
 let sessions = ConcurrentDictionary<WebSocket,obj>()
 
@@ -238,9 +246,18 @@ app.MapGet("/ws", fun ctx ->
 
               do! send webSocket msg
 
-              let msg = 
-               [ for KeyValue(streamId, events) in streams do
-                     { Id = streamId; Events = [ for e in events -> e.Type, decode e.Data e.ContentType ]} ]
+              let! events = Streams.readAllAsync 0 Int32.MaxValue
+              let msg =
+                let data = Array.zeroCreate events.Length
+                let s = events.Span
+                for i in 0 .. s.Length-1 do
+                    let event = s.[i]
+                    data.[i] <- 
+                     { StreamId = event.StreamId
+                       EventNumber = event.EventNumber
+                       EventType = event.Event.Type
+                       EventData = decode event.Event.Data event.Event.ContentType}
+                data
               
               do! send webSocket (StreamLoaded msg)
 
@@ -262,42 +279,66 @@ app.MapGet("/ws", fun ctx ->
 ) |> ignore
 
 
+
+
 app.MapPost("/es/{stream}", fun ctx ->
     task {
         let streamId = ctx.Request.RouteValues.["stream"] |> string
-
-        let boundary =HeaderUtilities.RemoveQuotes(
-            MediaTypeHeaderValue.Parse(ctx.Request.ContentType).Boundary).Value
-        let reader = MultipartReader(boundary,ctx.Request.Body)
-
-        let events = ResizeArray()
-        let mutable quit = false
-        while not quit do
-            let! section = reader.ReadNextSectionAsync() 
-            if isNull section then
-                quit <- true
+        let expectedVersion = 
+            let h = ctx.Request.Headers.["ESKV-Expected-Version"]
+            if h.Count  = 0 then
+                ValueSome -2
             else
-                let eventType = section.Headers.["ESKV-Event-Type"].[0]
-                
-                let! data = 
-                    task { 
-                        use memory = new IO.MemoryStream()
-                        do! section.Body.CopyToAsync(memory)
-                        return memory.ToArray()
-                    }
-                events.Add { Type = eventType; Data = data; ContentType = section.ContentType }
-                
+                let v = int h.[0]
+                if v < -2 then
+                    ValueNone  
+                else
+                    ValueSome v
 
-        let stream = streams.GetOrAdd(streamId,fun _ -> ConcurrentQueue())
-        lock stream (fun _ ->
-            for e in events do
-                stream.Enqueue(e)
-        )
 
-        do! publish (StreamUpdated { Id = streamId; Events = [ for e in events -> e.Type,  decode e.Data e.ContentType ]})
 
-        ctx.Response.StatusCode <- 204
-                
+        match expectedVersion with
+        | ValueNone ->
+            ctx.Response.StatusCode <- 400
+        | ValueSome expectedVersion ->
+            let boundary =HeaderUtilities.RemoveQuotes(
+                MediaTypeHeaderValue.Parse(ctx.Request.ContentType).Boundary).Value
+            let reader = MultipartReader(boundary,ctx.Request.Body)
+
+            let events = ResizeArray()
+            let mutable quit = false
+            while not quit do
+                let! section = reader.ReadNextSectionAsync() 
+                if isNull section then
+                    quit <- true
+                else
+                    let eventType = section.Headers.["ESKV-Event-Type"].[0]
+
+                    let! data = 
+                        task { 
+                            use memory = new IO.MemoryStream()
+                            do! section.Body.CopyToAsync(memory)
+                            return memory.ToArray()
+                        }
+                    events.Add { Type = eventType; Data = data; ContentType = section.ContentType }
+                    
+
+            let! nextExpectedVersion = Streams.appendAsync streamId (events.ToArray()) expectedVersion
+
+            match nextExpectedVersion with
+            | ValueSome(nextExpectedVersion, records) ->
+
+
+
+
+                do! publish (StreamUpdated (records |> Array.map(fun e -> { StreamId = e.StreamId; EventNumber = e.EventNumber; EventType = e.Event.Type; EventData = decode e.Event.Data e.Event.ContentType})
+                ))
+
+                ctx.Response.StatusCode <- 204
+                ctx.Response.Headers.Add("ESKV-Expected-Version", string nextExpectedVersion)
+
+            | ValueNone ->
+                ctx.Response.StatusCode <- 409
 
 
     } :> Task
