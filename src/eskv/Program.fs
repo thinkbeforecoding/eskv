@@ -14,6 +14,7 @@ open Shared
 open Microsoft.AspNetCore.WebUtilities
 open Microsoft.Net.Http.Headers
 open Microsoft.Extensions.FileProviders
+open System.Net.Http
 open Argu
 open AspNetExtensions
 open Streams
@@ -342,6 +343,41 @@ app.MapPost("/es/{stream}", fun ctx ->
 
 
     } :> Task
+) |> ignore
+
+
+app.MapGet("/es/{stream}/{start:int}/{count:int}", fun ctx ->
+    task {
+        let streamId = ctx.Request.RouteValues.["stream"] |> string
+        let start = ctx.Request.RouteValues.["start"] |> string |> int
+        let count = ctx.Request.RouteValues.["count"] |> string |> int
+
+        match! Streams.readStreamAsync streamId start count with
+        | ValueSome slice ->
+            if slice.Length = 0 then
+                ctx.Response.StatusCode <- 204
+            else
+                let content = new MultipartContent()
+                ctx.Response.ContentType <- string content.Headers.ContentType
+                
+                do
+                    let span = slice.Span
+                    for i in 0.. span.Length-1 do
+                        let e = span.[i]
+                        let part = new ByteArrayContent(e.Event.Data)
+                        part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(e.Event.ContentType)
+                        part.Headers.Add("ESKV-Event-Type", e.Event.Type)
+                        part.Headers.Add("ESKV-Event-Number", string e.EventNumber)
+                        content.Add(part)
+                    
+                
+                do! content.CopyToAsync(ctx.Response.Body)
+        | ValueNone ->
+            ctx.Response.StatusCode <- 404
+    
+        ()
+    } :> Task
+
 ) |> ignore
 
 app.Run(endpoint);

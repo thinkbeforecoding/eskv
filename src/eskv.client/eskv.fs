@@ -3,15 +3,26 @@
 open FSharp.Control
 open System
 open System.Net.Http
+
 open System.Net
 open System.Threading.Tasks
 
+type LoadResult =
+    { KeyExists: bool
+      Value: string
+      ETag: string }
 
 [<Struct>]
-type EventData = {
-    EventType: string
-    Data: string
-}
+type EventData = 
+    { EventType: string
+      Data: string }
+
+[<Struct>]
+type EventRecord = 
+    { EventType: string
+      EventNumber: int
+      Data: string }
+
 
 module private Http =
 
@@ -37,7 +48,7 @@ type Client(uri: Uri) =
             let! response  = client.GetAsync(Uri(kv, key))
             match response.StatusCode with
             | HttpStatusCode.NotFound ->
-                return null, None
+                return { KeyExists = false; Value = null; ETag = null }
             | Http.Success ->
                 let etag = 
                     match response.Headers.ETag with
@@ -46,7 +57,7 @@ type Client(uri: Uri) =
                 let! data = response.Content.ReadAsStringAsync()
 
 
-                return etag, Some data
+                return { KeyExists = true; Value = data; ETag = etag}
             | _ ->
                 return raiseHttpException(response)
 
@@ -68,9 +79,9 @@ type Client(uri: Uri) =
             
             match response.StatusCode with
             | HttpStatusCode.Conflict ->
-                return None
+                return null
             | Http.Success ->
-                return Some response.Headers.ETag.Tag
+                return response.Headers.ETag.Tag
             | _ ->
                  return raiseHttpException(response)
                 
@@ -87,11 +98,11 @@ type Client(uri: Uri) =
                 return raiseHttpException(response)
         } :> Task
 
-    member this.SaveS(key, value) = this.SaveAsync(key, value).Wait()
+    member this.Save(key, value) = this.SaveAsync(key, value).Wait()
 
 
 
-    member _.AppendAsync(stream: string, events) =
+    member _.AppendAsync(stream: string, events: EventData seq) =
         task {
             use client = new HttpClient()
 
@@ -114,7 +125,49 @@ type Client(uri: Uri) =
 
 
 
+    member _.ReadStreamForwardAsync(stream: string, start: int, count: int) =
+        task {
+            use client = new HttpClient()
+            let! response = client.GetAsync(Uri(es,$"{stream}/{start}/{count}" ))
+            if response.IsSuccessStatusCode then
+                if response.StatusCode = HttpStatusCode.NoContent then
+                    return [||]
+                else
+                    let mutable boundary = ""
+                    for p in response.Content.Headers.ContentType.Parameters do
+                        if p.Name = "boundary" then
+                            boundary <- p.Value.Trim('"')
+                    
+                    use! stream = response.Content.ReadAsStreamAsync()
+                    let reader = Microsoft.AspNetCore.WebUtilities.MultipartReader(boundary, stream)
+                    
 
+                    let mutable quit = false
+                    let events = ResizeArray()
+                    while not quit do
+                        
+                        let! section = reader.ReadNextSectionAsync()
+                        
+                        if isNull section then
+                            quit <- true
+                        else
+                            let eventType = section.Headers.TryGetValue("ESKV-Event-Type").ToString()
+                            let eventNumber = section.Headers.["ESKV-Event-Number"].ToString() |> int
+                            let! data = 
+                                use streamReader = new IO.StreamReader(section.Body)
+                                streamReader.ReadToEndAsync()
+                            events.Add({EventType = eventType; EventNumber = eventNumber; Data = data})
+                            
+
+                    return events.ToArray()
+            elif response.StatusCode = HttpStatusCode.NotFound then 
+                return [||]
+            else
+                return failwithf "%s" response.ReasonPhrase
+        }
+
+    member this.ReadStreamForward(stream: string, start: int, count: int) =
+        this.ReadStreamForwardAsync(stream,start,count).Result
 
 
 
