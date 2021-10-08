@@ -280,7 +280,28 @@ app.MapGet("/ws", fun ctx ->
 ) |> ignore
 
 
-
+let renderSlice (response: HttpResponse) start (slice: ReadOnlyMemory<EventRecord>) =
+    task {
+        response.Headers.Add("ESKV-Expected-Version", string (start+slice.Length-1))
+        response.Headers.Add("ESKV-Next-Event-Number", string (start+slice.Length))
+        if slice.Length = 0 then
+            response.StatusCode <- 204
+        else
+            let content = new MultipartContent()
+            response.ContentType <- string content.Headers.ContentType
+            
+            do
+                let span = slice.Span
+                for i in 0.. span.Length-1 do
+                    let e = span.[i]
+                    let part = new ByteArrayContent(e.Event.Data)
+                    part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(e.Event.ContentType)
+                    part.Headers.Add("ESKV-Event-Type", e.Event.Type)
+                    part.Headers.Add("ESKV-Event-Number", string e.EventNumber)
+                    content.Add(part)
+                
+            do! content.CopyToAsync(response.Body)
+    }
 
 app.MapPost("/es/{stream}", fun ctx ->
     task {
@@ -296,6 +317,8 @@ app.MapPost("/es/{stream}", fun ctx ->
                 else
                     ValueSome v
 
+        let returnNewEvents = ctx.Request.Headers.ContainsKey("ESKV-Return-New-Events")
+
 
 
         match expectedVersion with
@@ -304,25 +327,31 @@ app.MapPost("/es/{stream}", fun ctx ->
         | ValueSome expectedVersion ->
             let boundary =HeaderUtilities.RemoveQuotes(
                 MediaTypeHeaderValue.Parse(ctx.Request.ContentType).Boundary).Value
-            let reader = MultipartReader(boundary,ctx.Request.Body)
 
             let events = ResizeArray()
-            let mutable quit = false
-            while not quit do
-                let! section = reader.ReadNextSectionAsync() 
-                if isNull section then
-                    quit <- true
-                else
-                    let eventType = section.Headers.["ESKV-Event-Type"].[0]
+            if not (isNull boundary) then
+                let reader = MultipartReader(boundary,ctx.Request.Body)
 
-                    let! data = 
-                        task { 
-                            use memory = new IO.MemoryStream()
-                            do! section.Body.CopyToAsync(memory)
-                            return memory.ToArray()
-                        }
-                    events.Add { Type = eventType; Data = data; ContentType = section.ContentType }
-                    
+                let mutable quit = false
+                while not quit do
+                    let! section = reader.ReadNextSectionAsync() 
+                    if isNull section then
+                        quit <- true
+                    else
+                        match section.Headers.TryGetValue("ESKV-Event-Type") with
+                        | true, et ->
+                            let eventType = et.[0]
+
+                            let! data = 
+                                task { 
+                                    use memory = new IO.MemoryStream()
+                                    do! section.Body.CopyToAsync(memory)
+                                    return memory.ToArray()
+                                }
+                            events.Add { Type = eventType; Data = data; ContentType = section.ContentType }
+                        | false,_ ->
+                            quit <- true
+                        
 
             let! nextExpectedVersion = Streams.appendAsync streamId (events.ToArray()) expectedVersion
 
@@ -337,9 +366,17 @@ app.MapPost("/es/{stream}", fun ctx ->
 
                 ctx.Response.StatusCode <- 204
                 ctx.Response.Headers.Add("ESKV-Expected-Version", string nextExpectedVersion)
+                ctx.Response.Headers.Add("ESKV-Next-Event-Number", string (nextExpectedVersion+1))
 
             | ValueNone ->
                 ctx.Response.StatusCode <- 409
+                if returnNewEvents then
+                    match! Streams.readStreamAsync streamId (expectedVersion+1) (Int32.MaxValue) with
+                    | ValueSome slice ->
+                        do! renderSlice ctx.Response (expectedVersion+1) slice
+                    | ValueNone -> ()
+                        
+
 
 
     } :> Task
@@ -354,24 +391,8 @@ app.MapGet("/es/{stream}/{start:int}/{count:int}", fun ctx ->
 
         match! Streams.readStreamAsync streamId start count with
         | ValueSome slice ->
-            if slice.Length = 0 then
-                ctx.Response.StatusCode <- 204
-            else
-                let content = new MultipartContent()
-                ctx.Response.ContentType <- string content.Headers.ContentType
-                
-                do
-                    let span = slice.Span
-                    for i in 0.. span.Length-1 do
-                        let e = span.[i]
-                        let part = new ByteArrayContent(e.Event.Data)
-                        part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(e.Event.ContentType)
-                        part.Headers.Add("ESKV-Event-Type", e.Event.Type)
-                        part.Headers.Add("ESKV-Event-Number", string e.EventNumber)
-                        content.Add(part)
-                    
-                
-                do! content.CopyToAsync(ctx.Response.Body)
+            do! renderSlice ctx.Response start slice
+            
         | ValueNone ->
             ctx.Response.StatusCode <- 404
     

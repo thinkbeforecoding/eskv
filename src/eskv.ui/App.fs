@@ -18,14 +18,21 @@ type Editing =
       Value: string
       ETag: ETag
       Saving: bool}
+
 type EditState =
     | NoEdit
     | Editing of Editing
+
+type EventView =
+    | All
+    | Stream of string
 
 type Command =
     | ChangeNewKey of string
     | ChangeNewValue of string
     | CreateNew
+    | OpenNew
+    | CloseNew
     | DeleteKey of string*ETag
     | Deleted
     | Saved
@@ -35,23 +42,29 @@ type Command =
     | SaveEdit
     | EditSaved
     | Server of Shared.ServerCmd
+    | ChangeEventView of EventView
 
 
 type Model =
     { NewKey: string
       NewValue: string
+      ShowCreateNew: bool
       Saving: bool
       Keys: Map<string, string*ETag>
       Editing: EditState
       Events: (string * int * string*string) list 
+      EventView: EventView
       }
+
 let init() =
     { NewKey = ""
       NewValue = ""
+      ShowCreateNew = false
       Saving = false
       Keys = Map.empty
       Editing = NoEdit
-      Events = []  }, Cmd.none
+      Events = []
+      EventView = All}, Cmd.none
 
 let update (command: Command) (model: Model)  =
     match command with
@@ -71,9 +84,14 @@ let update (command: Command) (model: Model)  =
                    ] |> Async.AwaitPromise
                return Saved
                      })
+    | OpenNew ->
+        { model with ShowCreateNew = true }, Cmd.none
+    | CloseNew ->
+        { model with ShowCreateNew = false }, Cmd.none
     | Saved ->
         { model with NewKey = ""
                      NewValue = ""
+                     ShowCreateNew = false
                      Saving = false}, Cmd.none
                      
     | DeleteKey(key,etag) ->
@@ -113,7 +131,9 @@ let update (command: Command) (model: Model)  =
                 return EditSaved            })
         | _ -> model, Cmd.none
     | EditSaved ->
-        { model with Editing = NoEdit}, Cmd.none
+        { model with Editing = NoEdit }, Cmd.none
+    | ChangeEventView view ->
+        { model with EventView = view }, Cmd.none
     | Server (Shared.KeyChanged (key,value)) ->
         { model with 
             Keys =  Map.add key value model.Keys
@@ -147,86 +167,77 @@ let view model dispatch =
         Bulma.navbar [
             Bulma.color.isPrimary
             prop.children [
-            Bulma.navbarBrand.div [
-                prop.style [ 
-                    style.verticalAlign.baseline
-                ]
-
-                prop.children [
-                    Bulma.navbarItem.div [
-                        Html.div [
-                            prop.text "eskv"
-
-                            prop.style [ style.fontSize (length.em 3)
-                                         style.fontWeight.bold
-                                         style.fontStyle.italic
-                                         ]
-                        ]
-                        Html.div [
-                            prop.text "in memory event stream / key value store."
-                            prop.style [ style.marginTop (length.em 3)
-                                         style.marginLeft (length.em -5)
-                                         style.fontStyle.italic
-                                         ]
-
-                        ]
+                Bulma.navbarBrand.div [
+                    prop.style [ 
+                        style.verticalAlign.baseline
                     ]
 
-                ]
-                
+                    prop.children [
+                        Bulma.navbarItem.div [
+                            Html.div [
+                                prop.text "eskv"
 
-            
-            ]
-        ]
-        ]
-
-        Bulma.panel [
-            Bulma.panelHeading [
-                prop.text "New entry"
-            ]
-
-            Bulma.panelBlock.div [
-               
-                Bulma.control.div [
-                    Bulma.field.div [
-                        Bulma.label [
-                            Html.text "Key"
+                                prop.style [ style.fontSize (length.em 3)
+                                             style.fontWeight.bold
+                                             style.fontStyle.italic
+                                             ]
+                            ]
+                            Html.div [
+                                prop.text "in memory event stream / key value store - for learning purpose."
+                                prop.style [ style.marginTop (length.em 3)
+                                             style.marginLeft (length.em -5)
+                                             style.fontStyle.italic
+                                             ]
+                            ]
                         ]
-                        Bulma.input.text [ 
-                            prop.value model.NewKey
-                            prop.disabled model.Saving
-                            prop.onChange (fun (e: Event) -> dispatch (ChangeNewKey e.Value))
-                        ]
-                    ]
-                    Bulma.field.div [
-                        Bulma.label [
-                            Html.text "Value"
-                        ]
-                        Bulma.input.text [
-                            prop.value model.NewValue
-                            prop.disabled model.Saving
-                            prop.onChange (fun (e: Event) -> dispatch (ChangeNewValue e.Value))
-                        ]
-                    ]
-                    Bulma.button.button [
-                        prop.text "New"
-                        Bulma.color.isPrimary
-                        prop.disabled model.Saving
-                        prop.onClick (fun _ -> 
-                            dispatch CreateNew
-                        )
-                        
                     ]
                 ]
             ]
-
         ]
-
 
         Bulma.panel [
             Bulma.panelHeading [ 
-                Bulma.text.hasTextCentered
-                prop.text "Entries" ]
+                Html.div [
+                    prop.style [ 
+                        style.display.flex
+                        style.flexDirection.row
+                        
+                        ]
+                    
+                    prop.children [
+                        Html.div [
+                            prop.style [
+                                style.flexGrow 1
+                                style.textAlign.center
+                            ]
+                            prop.text "Entries"
+                        ]
+                        Html.a [
+                            prop.className "icon-text"
+                            Bulma.size.isSize6
+                            prop.style [ 
+                                style.flexGrow 0
+                            ]
+
+                            prop.children [
+                                Bulma.icon [
+                                    
+                                    Html.i [ 
+                                        if model.ShowCreateNew then
+                                            prop.className "fa fa-minus"
+                                        else
+                                            prop.className "fa fa-plus"
+                                    ]
+                                ]
+                                Html.text "New"
+                            ]
+
+                            prop.onClick (fun _ -> dispatch OpenNew)  
+                        ]
+                    ]
+
+                ]
+            ]
 
             if Map.isEmpty model.Keys then
                 Bulma.panelBlock.div [
@@ -239,54 +250,56 @@ let view model dispatch =
                 ]
 
             else
-                for key,(v,etag) in Map.toList model.Keys do
-                    Bulma.panelBlock.div [
-                        Bulma.columns [
-                            prop.style [ style.width (length.percent 100)
-                                         style.verticalAlign.middle]
-                            prop.children [
-                                Bulma.column [
-                                    Html.div [
-                                        prop.className "key"
-                                        prop.text key
+                Bulma.table [
+                    Bulma.table.isFullWidth
+                    Bulma.table.isStriped
+                    prop.children [
+                        Html.tr [
+                            Html.th [
+                                prop.text "Key"
+                                Bulma.column.isOneThird
+                            ]
+                            Html.th "Value"
+                            Html.th []
+                        ]
+
+                        if model.ShowCreateNew then
+                            Html.tr [
+                                Html.td [ 
+                                    Bulma.input.text [
+                                        prop.disabled model.Saving
+                                        prop.value model.NewKey
+                                        prop.onChange (dispatch << ChangeNewKey)
+                                        prop.onKeyDown(fun e -> 
+                                            match e.key with
+                                            | "Enter" ->
+                                                dispatch CreateNew
+                                            | "Escape" ->
+                                                dispatch CloseNew
+                                            | _ -> ()
+                                            )
+                                    ]
+                                ]
+                                Html.td [ 
+                                    Bulma.input.text [
+                                        prop.disabled model.Saving
+                                        prop.value model.NewValue
+                                        prop.onChange (dispatch << ChangeNewValue)
+                                        prop.onKeyDown(fun e -> 
+                                            match e.key with
+                                            | "Enter" ->
+                                                dispatch CreateNew
+                                            | "Escape" ->
+                                                dispatch CloseNew
+                                            | _ -> ()
+                                             )
                                     ]
                                 ]
 
-                                Bulma.column [
-                                    match model.Editing with
-                                    | Editing {Key = k; Value= v; Saving = saving} when k = key ->
-                                        prop.children [
-                                            Bulma.input.text [
-                                                prop.disabled saving
-                                                prop.value v
-                                                prop.onChange (dispatch << EditChanged)
-                                                prop.onKeyDown(fun e -> 
-                                                    match e.key with
-                                                    | "Enter" ->
-                                                        dispatch SaveEdit
-                                                    | "Escape" ->
-                                                        dispatch CancelEdit
-                                                    | _ -> ()
-                                                      )
-                                            ]
-                                        ]
-
-                                    | _ ->
-                                        prop.children [
-                                            Html.div [
-                                                prop.onClick (fun _ -> dispatch (Edit { Key = key; Value = v; ETag = etag; Saving = false}))
-                                                prop.text v
-                                                prop.className "editable"
-                                            ]
-                                        ]
-                                    
-                                ]
-                                Bulma.column [
+                                Html.td [
                                     Bulma.column.isNarrow
                                     prop.children [
-                                        match model.Editing with
-                                        | Editing { Key = k; Saving = saving; ETag = oldEtag} when k = key ->
-                                            if oldEtag <> etag then
+                                            if model.NewKey = "" then
                                                 Html.a [
                                                     prop.children [
                                                         Bulma.icon [
@@ -298,7 +311,7 @@ let view model dispatch =
                                                         ]
                                                         
                                                     ]
-                                                    Bulma.tooltip.text "Value has changed"
+                                                    Bulma.tooltip.text "You should provide a key"
                                                     Bulma.tooltip.hasTooltipDanger
                                                     prop.className "has-tooltip-danger"
                                                     prop.disabled true
@@ -307,80 +320,230 @@ let view model dispatch =
                                             else
                                                 Html.a [
 
-                                                    prop.disabled (saving)
+                                                    prop.disabled model.Saving
 
                                                     prop.children [
                                                         Bulma.icon [
-                                                            Html.i [ prop.className "fas fa-check" ]
+                                                            Html.i [ prop.className "fas fa-plus" ]
                                                         ]
                                                     ]
-                                                    prop.onClick (fun _ -> dispatch SaveEdit )
+                                                    prop.onClick (fun _ -> dispatch CreateNew )
                                                 ]
 
                                             Html.a [
-                                                prop.disabled saving
+                                                prop.disabled model.Saving
                                                 prop.children [
                                                     Bulma.icon [
                                                         Html.i [ prop.className "fas fa-times" ]
                                                     ]
                                                 ]
-                                                prop.onClick (fun _ -> dispatch CancelEdit )
+                                                prop.onClick (fun _ -> dispatch CloseNew )
                                             ]
-                                        | _ ->
-                                            Html.a [
-                                                prop.children [
-                                                    Bulma.icon [
-                                                        Html.i [ prop.className "fas fa-trash" ]
-                                                    ]
-                                                ]
-                                                prop.onClick (fun _ -> dispatch (DeleteKey (key,etag)) )
-                                            ]
-                                            Html.a [
-                                                prop.children [
-                                                    Bulma.icon [
-                                                        
-                                                    ]
-                                                ]
-                                            ]
-
 
                                     ]
+
+
                                 ]
+                            ]
+                        
+                        for key,(v,etag) in Map.toList model.Keys do
+                            Html.tr [
+                                prop.children [
+                                    Html.td [
+                                       
+                                        prop.children [
+                                            Html.div [
+                                                prop.className "key"
+                                                prop.text key
+                                            ]
+                                        ]
+                                    ]
+
+                                    Html.td [
+                                        match model.Editing with
+                                        | Editing {Key = k; Value= v; Saving = saving} when k = key ->
+                                            prop.children [
+                                                Bulma.input.text [
+                                                    prop.disabled saving
+                                                    prop.value v
+                                                    prop.onChange (dispatch << EditChanged)
+                                                    prop.onKeyDown(fun e -> 
+                                                        match e.key with
+                                                        | "Enter" ->
+                                                            dispatch SaveEdit
+                                                        | "Escape" ->
+                                                            dispatch CancelEdit
+                                                        | _ -> ()
+                                                          )
+                                                ]
+                                            ]
+
+                                        | _ ->
+                                            prop.children [
+                                                Html.div [
+                                                    prop.onClick (fun _ -> dispatch (Edit { Key = key; Value = v; ETag = etag; Saving = false}))
+                                                    prop.text v
+                                                    prop.className "editable"
+                                                ]
+                                            ]
+                                        
+                                    ]
+                                    Html.td [
+                                        Bulma.column.isNarrow
+                                        prop.children [
+                                            match model.Editing with
+                                            | Editing { Key = k; Saving = saving; ETag = oldEtag} when k = key ->
+                                                if oldEtag <> etag then
+                                                    Html.a [
+                                                        prop.children [
+                                                            Bulma.icon [
+                                                                prop.children [
+                                                                    Html.i [ prop.className "fas fa-exclamation-triangle" ]
+                                                                ]
+
+                                                                Bulma.color.hasTextDanger
+                                                            ]
+                                                            
+                                                        ]
+                                                        Bulma.tooltip.text "Value has changed"
+                                                        Bulma.tooltip.hasTooltipDanger
+                                                        prop.className "has-tooltip-danger"
+                                                        prop.disabled true
+                                                    ]
+
+                                                else
+                                                    Html.a [
+
+                                                        prop.disabled (saving)
+
+                                                        prop.children [
+                                                            Bulma.icon [
+                                                                Html.i [ prop.className "fas fa-check" ]
+                                                            ]
+                                                        ]
+                                                        prop.onClick (fun _ -> dispatch SaveEdit )
+                                                    ]
+
+                                                Html.a [
+                                                    prop.disabled saving
+                                                    prop.children [
+                                                        Bulma.icon [
+                                                            Html.i [ prop.className "fas fa-times" ]
+                                                        ]
+                                                    ]
+                                                    prop.onClick (fun _ -> dispatch CancelEdit )
+                                                ]
+                                            | _ ->
+                                                Html.a [
+                                                    prop.children [
+                                                        Bulma.icon [
+                                                            Html.i [ prop.className "fas fa-trash" ]
+                                                        ]
+                                                    ]
+                                                    prop.onClick (fun _ -> dispatch (DeleteKey (key,etag)) )
+                                                ]
+                                                Html.a [
+                                                    prop.children [
+                                                        Bulma.icon [
+                                                            
+                                                        ]
+                                                    ]
+                                                ]
+
+
+                                        ]
+                                    ]
+                                ]
+
+                            
+                            
+                        ]
+                ]
+            ]
+        ]
+        Bulma.panel [
+            prop.children [
+                Bulma.panelHeading [
+                    Bulma.text.hasTextCentered
+                    match model.EventView with
+                    | All -> prop.text "Streams - All"
+                    | Stream stream -> 
+                        prop.children [
+                            Html.text $"Stream - {stream}"
+                            Bulma.delete [ 
+                                prop.onClick (fun _ -> dispatch (ChangeEventView All))
                             ]
                         ]
 
                     
+                ]
+
+                if List.isEmpty model.Events then
                     
+
+                    Bulma.panelBlock.div [
+                        
+                        Bulma.color.hasTextGreyLight
+                        Bulma.text.hasTextCentered
+                        Bulma.text.isItalic
+                        prop.className "is-justify-content-center"
+                        prop.text "no event yet..."
+                    ]
+                else
+                    
+                    Bulma.table [
+                        Bulma.table.isStriped
+                        Bulma.table.isFullWidth
+
+                        prop.children [
+                           
+
+                            match model.EventView with
+                            | All ->
+                                Html.tr [
+                                   Html.th "Stream"
+                                   Html.th [
+                                    prop.text "Event Number"
+                                    Bulma.table.isNarrow
+                                   ]
+                                   Html.th "Event Type"
+                                   Html.th "Event Data"
+                                ]
+                                for streamid, eventNumber, eventType, eventData in List.rev model.Events do
+                                    Html.tr [
+                                        Html.td [
+                                            Html.a [
+                                                prop.text streamid
+                                                prop.onClick (fun _ -> dispatch (ChangeEventView( Stream streamid)))
+                                            ]
+                                        ]
+                                        Html.td [ 
+                                            prop.text eventNumber
+                                            prop.style [ 
+                                                style.textAlign.right
+                                                style.paddingRight (length.em 3)
+                                            ]
+                                        ]
+                                        Html.td eventType
+                                        Html.td eventData
+                                    ]
+                            | Stream stream ->
+                                Html.tr [
+                                   Html.th "Event Number"
+                                   Html.th "Event Type"
+                                   Html.th "Event Data"
+                                ]
+                                for _, eventNumber, eventType, eventData in model.Events |> List.filter (fun (id,_,_,_) -> id = stream) |> List.rev do
+                                    Html.tr [
+                                        Html.td eventNumber
+                                        Html.td eventType
+                                        Html.td eventData
+                                    ]
+
+                        ]
+
                 ]
-        ]
-        Bulma.panel [
-            Bulma.panelHeading [
-                Bulma.text.hasTextCentered
-                prop.text "Streams"
-            ]
-            Bulma.panelBlock.div [
-                prop.style [ style.flexDirection.column ]
-                prop.children [
-                    for streamid, eventNumber, eventType, eventData in model.Events do
-                        Bulma.columns [
-                            prop.style [ style.width (length.percent 100)
-                                         style.verticalAlign.middle]
-                            prop.children [
-                                Bulma.column [
-                                    prop.text streamid
-                                ]
-                                Bulma.column [
-                                    prop.text eventNumber
-                                ]
-                                Bulma.column [
-                                    prop.text eventType
-                                ]
-                                Bulma.column [
-                                    prop.text eventData
-                                ]
-                            ]
-                         ]
-                ]
+
             ]
 
 
