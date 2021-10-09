@@ -612,7 +612,23 @@ let view model dispatch =
 
 
 
-           ]
+            ]
+            Bulma.footer [
+                Bulma.content [
+                    Bulma.text.hasTextCentered
+                    prop.children [
+                        Html.a [
+                            prop.style [
+                                style.fontStyle.italic
+                            ]
+                            Bulma.color.hasTextGrey
+                           
+                            prop.text "// thinkbeforecoding"
+                            prop.href "https://thinkbeforecoding.com"
+                        ]
+                    ]
+                ]
+            ]
         ]
     ]
 
