@@ -531,6 +531,7 @@ let view model dispatch =
                                 for streamid, eventNumber, eventType, eventData in List.rev model.Events do
                                     Html.tr [
                                         table.tdEllipsis.a [
+                                            prop.className "is-cell"
                                             prop.text streamid
                                             prop.onClick (fun _ -> dispatch (ChangeEventView( Stream streamid)))
                                         ]
@@ -541,8 +542,14 @@ let view model dispatch =
                                                 style.paddingRight (length.em 1)
                                             ]
                                         ]
-                                        table.tdEllipsis eventType
-                                        table.tdEllipsis eventData
+                                        table.tdEllipsis [
+                                            prop.className "is-cell"
+                                            prop.text eventType
+                                        ]
+                                        table.tdEllipsis [
+                                            prop.className "is-cell"
+                                            prop.text eventData
+                                        ]
                                     ]
                             | Stream stream ->
                                 Html.tr [
@@ -568,8 +575,14 @@ let view model dispatch =
                                                 style.paddingRight (length.em 1)
                                             ]
                                         ]
-                                        table.tdEllipsis eventType
-                                        table.tdEllipsis eventData
+                                        table.tdEllipsis [
+                                            prop.className "is-cell"
+                                            prop.text eventType
+                                        ]
+                                        table.tdEllipsis [
+                                            prop.className "is-cell"
+                                            prop.text eventData
+                                        ]
                                     ]
 
 

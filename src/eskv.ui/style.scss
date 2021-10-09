@@ -9,16 +9,7 @@
     padding-top: .5em;
 }
 
-.editable {
-    border-color: #dbdbdb;
-    border-radius: 4px;
-    border-color: transparent;
-    padding-bottom: calc(.5em - 1px);
-    padding-left: calc(.75em - 1px);
-    padding-right: calc(.75em - 1px);
-    padding-top: calc(.5em - 1px);
-    border-style: solid;
-}
+
 
 .editable:hover {
     cursor: pointer;
@@ -32,12 +23,20 @@ table th {
 
 }
 
-table td a {
-    padding-left: 0.75em;
 
+
+.editable {
+    border-color: #dbdbdb;
+    border-radius: 4px;
+    border-color: transparent;
+    padding-bottom: calc(.5em - 1px);
+    padding-left: calc(.75em - 1px);
+    padding-right: calc(.75em - 1px);
+    padding-top: calc(.5em - 1px);
+    border-style: solid;
 }
 
-table td div {
+
+.is-cell {
     padding-left: 0.75em;
 }
-
