@@ -171,25 +171,45 @@ let view model dispatch =
                 prop.children [
                     Bulma.navbarBrand.div [
                         prop.style [ 
-                            style.verticalAlign.baseline
+                            style.width (length.percent 100)
+                            style.display.block
+                            style.verticalAlign.top
                         ]
 
                         prop.children [
                             Bulma.navbarItem.div [
-                                Html.div [
-                                    prop.text "eskv"
-
-                                    prop.style [ style.fontSize (length.em 3)
-                                                 style.fontWeight.bold
-                                                 style.fontStyle.italic
-                                                 ]
+                                prop.style [
+                                    style.alignItems.stretch
                                 ]
-                                Html.div [
-                                    prop.text "in memory event stream / key value store - for learning purpose."
-                                    prop.style [ style.marginTop (length.em 3)
-                                                 style.marginLeft (length.em -5)
-                                                 style.fontStyle.italic
-                                                 ]
+                                prop.children [
+                                    Html.div [
+                                        prop.text "eskv"
+
+                                        prop.style [ style.fontSize (length.em 3)
+                                                     style.fontWeight.bold
+                                                     style.fontStyle.italic
+                                                     ]
+                                    ]
+                                    Html.div [
+                                        prop.children [
+                                            Html.div "in memory event stream / key value store "
+                                            Html.div " - for learning purpose."
+                                        ]
+                                        prop.style [
+                                            style.fontStyle.italic
+                                            style.display.flex
+                                            style.flexDirection.row
+                                            style.flexWrap.wrap
+                                            style.overflow.hidden
+                                            //style.position.relative
+                                            style.marginLeft (length.pt -59)
+                                            style.marginTop (length.pt 39)
+                                            style.lineHeight (length.em 1)
+                                            
+                                            style.width (length.calc "100%")
+
+                                        ]
+                                    ]
                                 ]
                             ]
                         ]
