@@ -56,6 +56,11 @@ module private Http =
         else
             Failure
 
+module ExpectedVersion =
+    let Start = 0
+    let NoStream = -1
+    let Any = -2
+
 type Client(uri: Uri) =
     let kv = Uri(uri, "kv/")
     let es = Uri(uri, "es/")

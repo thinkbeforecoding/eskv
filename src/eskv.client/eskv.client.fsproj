@@ -8,6 +8,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Compile Include="Hashing.fs" />
     <Compile Include="eskv.fs" />
   </ItemGroup>
 
