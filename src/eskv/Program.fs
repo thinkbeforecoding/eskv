@@ -1,11 +1,9 @@
 ﻿open System
 open Microsoft.AspNetCore.Builder
-open Microsoft.Extensions.Hosting
 open System.Collections.Concurrent
 open System.Threading.Tasks
 open System.Buffers
 open System.Security.Cryptography
-open Microsoft.Extensions.Primitives
 open Microsoft.AspNetCore.Http
 open System.Net.WebSockets
 open System.Threading
@@ -115,8 +113,25 @@ if isDevMode then
     ) |> ignore
 
 
-app.MapGet("/kv/",  Func<_, _>( fun _ ->
-                [| for k in data.Keys -> k |] )) |> ignore
+
+app.MapGet("/kv/",  fun ctx ->
+    task {
+
+        ctx.Response.ContentType <- "text/plain"
+        for key in data.Keys do
+            
+            let len = Text.Encoding.UTF8.GetByteCount(key)
+            let data = ctx.Response.BodyWriter.GetSpan(len+1)
+            let written = Text.Encoding.UTF8.GetBytes(key.AsSpan(), data)
+            data.[written] <- 10uy
+
+            ctx.Response.BodyWriter.Advance(written+1)
+        do! ctx.Response.BodyWriter.CompleteAsync()
+
+    
+    } :> Task
+    
+               ) |> ignore
 
 
 app.MapGet("/kv/{key}", fun ctx -> 
@@ -280,8 +295,9 @@ app.MapGet("/ws", fun ctx ->
 ) |> ignore
 
 
-let renderSlice (response: HttpResponse) start (slice: ReadOnlyMemory<EventRecord>) =
+let renderSlice (response: HttpResponse) (streamId: string) includeLink start (slice: ReadOnlyMemory<Event>) =
     task {
+        response.Headers.Add("ESKV-Stream", streamId)
         response.Headers.Add("ESKV-Expected-Version", string (start+slice.Length-1))
         response.Headers.Add("ESKV-Next-Event-Number", string (start+slice.Length))
         if slice.Length = 0 then
@@ -294,11 +310,32 @@ let renderSlice (response: HttpResponse) start (slice: ReadOnlyMemory<EventRecor
                 let span = slice.Span
                 for i in 0.. span.Length-1 do
                     let e = span.[i]
-                    let part = new ByteArrayContent(e.Event.Data)
-                    part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(e.Event.ContentType)
-                    part.Headers.Add("ESKV-Event-Type", e.Event.Type)
-                    part.Headers.Add("ESKV-Event-Number", string e.EventNumber)
-                    content.Add(part)
+
+                    match e with
+                    | Record record -> 
+                        let part = new ByteArrayContent(record.Event.Data)
+                        part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(record.Event.ContentType)
+                        part.Headers.Add("ESKV-Event-Type", record.Event.Type)
+                        part.Headers.Add("ESKV-Event-Number", string record.EventNumber)
+
+                        content.Add(part)
+                    | Link l -> 
+                        
+                        let part =
+                        
+                            if includeLink then
+                                new ByteArrayContent(l.OriginEvent.Event.Data)
+                            else
+                                new ByteArrayContent([||])
+                        part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(l.OriginEvent.Event.ContentType)
+                        part.Headers.Add("ESKV-Event-Number", string l.EventNumber)
+                        part.Headers.Add("ESKV-Origin-Stream", string l.OriginEvent.StreamId)
+                        if includeLink then
+                            part.Headers.Add("ESKV-Origin-Event-Number", string l.OriginEvent.EventNumber)
+                            part.Headers.Add("ESKV-Event-Type", l.OriginEvent.Event.Type)
+
+                        content.Add(part)
+
                 
             do! content.CopyToAsync(response.Body)
     }
@@ -373,7 +410,7 @@ app.MapPost("/es/{stream}", fun ctx ->
                 if returnNewEvents then
                     match! Streams.readStreamAsync streamId (expectedVersion+1) (Int32.MaxValue) with
                     | ValueSome slice ->
-                        do! renderSlice ctx.Response (expectedVersion+1) slice
+                        do! renderSlice ctx.Response streamId true (expectedVersion+1) slice
                     | ValueNone -> ()
                         
 
@@ -389,9 +426,12 @@ app.MapGet("/es/{stream}/{start:int}/{count:int}", fun ctx ->
         let start = ctx.Request.RouteValues.["start"] |> string |> int
         let count = ctx.Request.RouteValues.["count"] |> string |> int
 
+        let includeLink =
+            not (ctx.Request.Headers.ContainsKey("ESKV-Link-Only"))
+
         match! Streams.readStreamAsync streamId start count with
         | ValueSome slice ->
-            do! renderSlice ctx.Response start slice
+            do! renderSlice ctx.Response streamId includeLink start slice
             
         | ValueNone ->
             ctx.Response.StatusCode <- 404
@@ -400,5 +440,7 @@ app.MapGet("/es/{stream}/{start:int}/{count:int}", fun ctx ->
     } :> Task
 
 ) |> ignore
+
+
 
 app.Run(endpoint);

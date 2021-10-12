@@ -23,7 +23,12 @@ type EventData =
 type EventRecord = 
     { EventType: string
       EventNumber: int
-      Data: string }
+      Data: string 
+      OriginStream: string
+      OriginEventNumber: int }
+
+
+
 
 
 
@@ -34,6 +39,12 @@ type StreamState =
 type Slice =
     { State: StreamState
       Events: EventRecord[]
+      ExpectedVersion: int
+      NextEventNumber: int }
+
+type StreamsSlice =
+    { State: StreamState
+      Streams: string[]
       ExpectedVersion: int
       NextEventNumber: int }
 
@@ -78,6 +89,8 @@ type Client(uri: Uri) =
                         if p.Name = "boundary" then
                             boundary <- p.Value.Trim('"')
                     
+                    let streamId = response.Headers.GetValues("ESKV-Stream").First()
+
                     use! stream = response.Content.ReadAsStreamAsync()
                     let reader = Microsoft.AspNetCore.WebUtilities.MultipartReader(boundary, stream)
                     
@@ -91,12 +104,40 @@ type Client(uri: Uri) =
                         if isNull section then
                             quit <- true
                         else
-                            let eventType = section.Headers.["ESKV-Event-Type"].ToString()
+                             
+                            let! eventType, data = 
+                                task {
+                                match section.Headers.TryGetValue("ESKV-Event-Type") with
+                                | true, eth -> 
+                                    let eventType = eth.ToString()
+
+
+                                    return!
+                                        task {
+                                            use streamReader = new IO.StreamReader(section.Body)
+                                            let! data = streamReader.ReadToEndAsync()
+                                            return eventType, data 
+                                        }
+                                    
+                                | false, _ ->
+                                    return "$>", null
+                                }
                             let eventNumber = section.Headers.["ESKV-Event-Number"].ToString() |> int
-                            let! data = 
-                                use streamReader = new IO.StreamReader(section.Body)
-                                streamReader.ReadToEndAsync()
-                            events.Add({EventType = eventType; EventNumber = eventNumber; Data = data})
+                            let originEventNumber = 
+                                match section.Headers.TryGetValue("ESKV-Origin-Event-Number") with
+                                | true, h -> h.ToString() |> int
+                                | false, _ -> eventNumber
+                            let originStream =
+                                match section.Headers.TryGetValue("ESKV-Origin-Stream") with
+                                | true, h -> h.ToString()
+                                | false, _ -> streamId
+                            events.Add({EventType = eventType
+                                        EventNumber = eventNumber
+                                        Data = data
+                                        OriginEventNumber = originEventNumber
+                                        OriginStream = originStream
+                                        })
+                                
                             
 
                     return events.ToArray()
@@ -165,6 +206,29 @@ type Client(uri: Uri) =
     member this.Save(key, value) = this.SaveAsync(key, value).Wait()
 
 
+    member _.DeleteAsync(key: string) =
+      task {
+          use client = new HttpClient()
+
+          let! response = client.DeleteAsync(Uri(kv,key))
+          if not response.IsSuccessStatusCode
+                && response.StatusCode <> HttpStatusCode.NotFound then
+              return raiseHttpException(response)
+      } :> Task
+
+    member this.Delete(key: string) =
+        this.DeleteAsync(key).Wait()
+
+
+    member _.GetKeysAsync() =
+        task {
+          use client = new HttpClient()
+
+          let! response = client.GetStringAsync(kv)
+          return response.Split("\n",StringSplitOptions.RemoveEmptyEntries)
+        }
+    member this.GetKeys() =
+        this.GetKeysAsync().Result
 
     member _.AppendAsync(stream: string, events: EventData seq) =
         task {
@@ -256,10 +320,14 @@ type Client(uri: Uri) =
 
      member this.TryAppendOrRead(stream: string, expectedVersion, events) = this.TryAppendOrReadAsync(stream, expectedVersion, events).Result
 
-    member _.ReadStreamForwardAsync(stream: string, start: int, count: int) =
+    member _.ReadStreamForwardAsync(stream: string, start: int, count: int, linkOnly: bool) =
         task {
             use client = new HttpClient()
-            let! response = client.GetAsync(Uri(es,$"{stream}/{start}/{count}" ))
+
+            let request = new HttpRequestMessage(HttpMethod.Get, Uri(es,$"{stream}/{start}/{count}"))
+            if linkOnly then
+                request.Headers.Add("ESKV-Link-Only","")
+            let! response = client.SendAsync(request)
             if response.IsSuccessStatusCode then
                 let nextExpectedVersion = response.Headers.GetValues("ESKV-Expected-Version").First() |> int
                 let nextEventNumber = response.Headers.GetValues("ESKV-Next-Event-Number").First() |> int
@@ -278,8 +346,26 @@ type Client(uri: Uri) =
                 return failwithf "%s" response.ReasonPhrase
         }
 
+    member this.ReadStreamForward(stream: string, start: int, count: int, linkOnly: bool) =
+        this.ReadStreamForwardAsync(stream,start,count, linkOnly).Result
+
+    member this.ReadStreamForwardAsync(stream: string, start: int, count: int) =
+        this.ReadStreamForwardAsync(stream,start,count, false)
+
     member this.ReadStreamForward(stream: string, start: int, count: int) =
         this.ReadStreamForwardAsync(stream,start,count).Result
 
+    member this.GetStreamsAsync(start: int, count: int) =
+        task {
+            let! slice = this.ReadStreamForwardAsync("$streams", start, count, true)
+        
+            return {
+                State = slice.State
+                Streams = slice.Events |> Array.map (fun e -> e.OriginStream)
+                ExpectedVersion = slice.ExpectedVersion
+                NextEventNumber = slice.NextEventNumber
+            }
+        }
 
-
+    member this.GetStreams(start: int, count: int) =
+        this.GetStreamsAsync(start, count).Result

@@ -40,43 +40,59 @@ type EventRecord =
      EventNumber: int
      Event: EventData }
 
+type Link =
+    { StreamId: string
+      EventNumber: int
+      OriginEvent: EventRecord }
+
+type Event =
+    | Record of EventRecord
+    | Link of Link
 
 type Stream = 
     { Id: string
-      Events: AppendList<EventRecord> }
+      Events: AppendList<Event> }
 
 
 
 type Action =
     | Append of streamId: string * EventData[] * expectedVersion:int * reply:((int * EventRecord[]) ValueOption -> unit)
-    | ReadStream of streamId: string  * start: int * count: int * reply:(ValueOption<EventRecord ReadOnlyMemory> -> unit)
+    | ReadStream of streamId: string  * start: int * count: int * reply:(ValueOption<Event ReadOnlyMemory> -> unit)
     | ReadAll of start: int * count: int * reply:(EventRecord ReadOnlyMemory -> unit)
     
-
+    
+[<Literal>]
+let StreamsId = "$streams"
 
 let streams =
     MailboxProcessor.Start (fun mailbox ->
         let all = AppendList<EventRecord>()
         let streams = Dictionary<string,Stream>()
 
+        let getStream streamId =
+            match streams.TryGetValue(streamId) with
+            | true, s -> s
+            | false, _ ->
+                let s = { Id = streamId; Events = AppendList<Event>()}
+                streams.Add(streamId, s)
+                s
 
         let rec loop() = async {
             match! mailbox.Receive() with
             | Append(streamId, events, expectedVersion, reply) ->
-                let stream = 
-                    match streams.TryGetValue(streamId) with
-                    | true, s -> s
-                    | false, _ ->
-                        let s = { Id = streamId; Events = AppendList<EventRecord>()}
-                        streams.Add(streamId, s)
-                        s
+                let stream = getStream streamId
 
                
                 if expectedVersion = -2 || expectedVersion = stream.Events.Count - 1 then
                     let first = stream.Events.Count
-                    let records = events |> Array.mapi(fun i e -> {StreamId = stream.Id; EventNumber = first+i;Event  = e})
-                    stream.Events.AddRange(records)
+                    let records = events |> Array.mapi(fun i e -> {StreamId = stream.Id; EventNumber = first+i;Event  =  e})
+                    stream.Events.AddRange(Array.map Record records)
                     all.AddRange(records)
+
+                    if first = 0 && records.Length > 0 then
+                        let streams = getStream StreamsId
+                        streams.Events.AddRange([|Link { StreamId = StreamsId; EventNumber = streams.Events.Count; OriginEvent = records.[0]  }|] )
+
 
                     reply(ValueSome (stream.Events.Count-1, records))
 
