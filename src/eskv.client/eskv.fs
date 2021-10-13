@@ -8,17 +8,20 @@ open System.Net
 open System.Threading.Tasks
 open System.Linq
 
+/// Contains result information for a <see cref="EskvClient.TryLoad"/> operation.
 type LoadResult =
     { KeyExists: bool
       Value: string
       ETag: string }
 
 
+/// Contains event data for a <see cref="EskvClient.Append"/> operation.
 [<Struct>]
 type EventData = 
     { EventType: string
       Data: string }
 
+/// Contains event data returned by <see cref="EskvClient.ReadStreamForward"/>.
 [<Struct>]
 type EventRecord = 
     { EventType: string
@@ -28,31 +31,32 @@ type EventRecord =
       OriginEventNumber: int }
 
 
-
-
-
-
+/// Indicates whether a stream exists.
 type StreamState =
     | NoStream = 0
     | StreamExists = 1
 
+/// A slice of stream returned by <see cref="EskvClient.ReadStreamForward"/>.
 type Slice =
     { State: StreamState
       Events: EventRecord[]
       ExpectedVersion: int
       NextEventNumber: int }
 
+/// A slice of stream list returned by <see cref="EskvClient.GetStreams"/>.
 type StreamsSlice =
     { State: StreamState
       Streams: string[]
-      ExpectedVersion: int
+      LastEventNumber: int
       NextEventNumber: int }
 
+/// Contains result information for a <see cref="EskvClient.TryAppend"/> operation.
 type AppendResult =
     { Success: bool
       ExpectedVersion: int 
       NextEventNumber: int }
 
+/// Contains result information for a <see cref="EskvClient.TryAppendOrRead"/> operation.
 type AppendOrReadResult =
     { Success: bool
       NewEvents: EventRecord[]
@@ -68,11 +72,20 @@ module private Http =
             Failure
 
 module ExpectedVersion =
-    let Start = 0
-    let NoStream = -1
-    let Any = -2
+    let [<Literal>] Start = 0
+    let [<Literal>] NoStream = -1
+    let [<Literal>] Any = -2
 
-type Client(uri: Uri) =
+module EventNumber =
+    let [<Literal>] Start = 0
+
+module EventCount =
+    let [<Literal>] All = Int32.MaxValue
+
+/// <summary>Creates a new instance of <see cref="EskvClient" /> to use
+/// eskv in-memory key/value and event store.</summary>
+/// <param name="uri">The uri of the eskv server.</param>
+type EskvClient(uri: Uri) =
     let kv = Uri(uri, "kv/")
     let es = Uri(uri, "es/")
     [<Literal>]
@@ -146,9 +159,16 @@ type Client(uri: Uri) =
         }
 
 
-    new() = Client(Uri "http://localhost:5000")
+    /// <summary>Creates a new instance of <see cref="EskvClient" /> to use
+    /// eskv in-memory key/value and event store. Use the default
+    /// http://localhost:5000 eskv server uri.</summary>
+    new() = EskvClient(Uri "http://localhost:5000")
 
-    
+    /// <summary>Loads the value from the key in the specified container if it exists.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
+    /// <returns>Returns a <see cref="LoadResult" /> indicating if the key exists, and its
+    /// value if any.</returns>
     member _.TryLoadAsync(container: string, key: string) =
         task {
             use client = new HttpClient()
@@ -171,13 +191,35 @@ type Client(uri: Uri) =
         } 
 
        
+    /// <summary>Loads the value from the key in the default container if it exists.</summary>
+    /// <param name="key">The key used to store the value.</param>
+    /// <returns>Returns a <see cref="LoadResult" /> indicating if the key exists, and its
+    /// value if any.</returns>
     member this.TryLoadAsync(key: string) =
         this.TryLoadAsync(defaultContainer, key)
 
+    /// <summary>Loads the value from the key in the specified container if it exists.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
+    /// <returns>Returns a <see cref="LoadResult" /> indicating if the key exists, and its
+    /// value if any.</returns>
     member this.TryLoad(container, key) = this.TryLoadAsync(container, key).Result
 
+    /// <summary>Loads the value from the key in the default container if it exists.</summary>
+    /// <param name="key">The key used to store the value.</param>
+    /// <returns>Returns a <see cref="LoadResult" /> indicating if the key exists, and its
+    /// value if any.</returns>
     member this.TryLoad(key) = this.TryLoadAsync(key).Result
 
+    /// <summary>Saves the given value under specified container/key. The value is actually
+    /// updated only if the etag corresponds to current value. Etag can be obtained either
+    /// from this function returned value, or by calling <see cref="TryLoad" />.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under container/key</param>
+    /// <param name="etag">The etag value used to validate that the value did not change.
+    /// Use null to check that the key does not already exist.</param>
+    /// <returns>The new etag, or null if the etag did not match</returns>
     member _.TrySaveAsync(container: string, key: string, value: string, etag: string) =
         task {
             use client = new HttpClient()
@@ -198,15 +240,45 @@ type Client(uri: Uri) =
                 
         }
 
+    /// <summary>Saves the given value under specified key in the default container. The value is actually
+    /// updated only if the etag corresponds to current value. Etag can be obtained either
+    /// from this function returned value, or by calling <see cref="TryLoad" />.</summary>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under key</param>
+    /// <param name="etag">The etag value used to validate that the value did not change.
+    /// Use null to check that the key does not already exist.</param>
+    /// <returns>The new etag, or null if the etag did not match</returns>
     member this.TrySaveAsync(key: string, value: string, etag: string) =
         this.TrySaveAsync(defaultContainer, key, value, etag)
 
+    /// <summary>Saves the given value under specified container/key. The value is actually
+    /// updated only if the etag corresponds to current value. Etag can be obtained either
+    /// from this function returned value, or by calling <see cref="TryLoad" />.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under container/key</param>
+    /// <param name="etag">The etag value used to validate that the value did not change.
+    /// Use null to check that the key does not already exist.</param>
+    /// <returns>The new etag, or null if the etag did not match</returns>
     member this.TrySave(container, key, value, etag) = this.TrySaveAsync(container, key, value, etag).Result
 
+    /// <summary>Saves the given value under specified key in the default container. The value is actually
+    /// updated only if the etag corresponds to current value. Etag can be obtained either
+    /// from this function returned value, or by calling <see cref="TryLoad" />.</summary>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under key</param>
+    /// <param name="etag">The etag value used to validate that the value did not change.
+    /// Use null to check that the key does not already exist.</param>
+    /// <returns>The new etag, or null if the etag did not match</returns>
     member this.TrySave(key, value, etag) = this.TrySaveAsync(key, value, etag).Result
 
 
 
+    /// <summary>Saves the given value under specified container/key. The value is
+    /// updated without checking the etag.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under container/key</param>
     member _.SaveAsync(container: string, key: string, value: string) =
         task {
             use client = new HttpClient()
@@ -216,14 +288,30 @@ type Client(uri: Uri) =
                 return raiseHttpException(response)
         } :> Task
 
+    /// <summary>Saves the given value under specified key in the default container.
+    /// The value is updated without checking the etag.</summary>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under key</param>
     member this.SaveAsync(key: string, value: string) =
         this.SaveAsync(defaultContainer, key, value)
     
+    /// <summary>Saves the given value under specified container/key. The value is
+    /// updated without checking the etag.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under container/key</param>
     member this.Save(container, key, value) = this.SaveAsync(container, key, value).Wait()
 
+    /// <summary>Saves the given value under specified key in the default container.
+    /// The value is updated without checking the etag.</summary>
+    /// <param name="key">The key used to store the value.</param>
+    /// <param name="value">The value to store under key</param>
     member this.Save(key, value) = this.SaveAsync(key, value).Wait()
 
 
+    /// <summary>Deletes a key from a container.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
     member _.DeleteKeyAsync(container: string, key: string) =
       task {
           use client = new HttpClient()
@@ -235,15 +323,24 @@ type Client(uri: Uri) =
               return raiseHttpException(response)
       } :> Task
 
+    /// <summary>Deletes a key from the default container.</summary>
+    /// <param name="key">The key used to store the value.</param>
     member this.DeleteKeyAsync(key: string) =
         this.DeleteKeyAsync(defaultContainer, key)
 
+    /// <summary>Deletes a key from a container.</summary>
+    /// <param name="container">The name of the container of the key.</param>
+    /// <param name="key">The key used to store the value.</param>
     member this.DeleteKey(container, key: string) =
         this.DeleteKeyAsync(container, key).Wait()
 
+    /// <summary>Deletes a key from the default container.</summary>
+    /// <param name="key">The key used to store the value.</param>
     member this.DeleteKey(key: string) =
         this.DeleteKeyAsync(key).Wait()
 
+    /// <summary>Deletes a container and all keys it contains.</summary>
+    /// <param name="container">The name of the container.</param>
     member _.DeleteContainerAsync(container: string) =
       task {
           use client = new HttpClient()
@@ -254,9 +351,14 @@ type Client(uri: Uri) =
               return raiseHttpException(response)
       } :> Task
 
+    /// <summary>Deletes a container and all keys it contains.</summary>
+    /// <param name="container">The name of the container.</param>
     member this.DeleteContainer(container: string) =
         this.DeleteContainerAsync(container).Wait()
 
+    /// <summary>Get all the keys from specified container.</summary>
+    /// <param name="container">The name of the container.</param>
+    /// <returns>Returns an array with all the keys.</returns>
     member _.GetKeysAsync(container: string) =
         task {
           use client = new HttpClient()
@@ -265,15 +367,24 @@ type Client(uri: Uri) =
           return response.Split("\n",StringSplitOptions.RemoveEmptyEntries)
         }
 
+    /// <summary>Get all the keys from the default container.</summary>
+    /// <returns>Returns an array with all the keys.</returns>
     member this.GetKeysAsync() =
         this.GetKeysAsync(defaultContainer)
 
+    /// <summary>Get all the keys from specified container.</summary>
+    /// <param name="container">The name of the container.</param>
+    /// <returns>Returns an array with all the keys.</returns>
     member this.GetKeys(container) =
         this.GetKeysAsync(container).Result
 
+    /// <summary>Get all the keys from the default container.</summary>
+    /// <returns>Returns an array with all the keys.</returns>
     member this.GetKeys() =
         this.GetKeysAsync().Result
 
+    /// <summary>Get a list of all containers names.</summary>
+    /// <returns>Returns an array with all the containers names.</returns>
     member _.GetContainersAsync() =
         task {
           use client = new HttpClient()
@@ -282,9 +393,15 @@ type Client(uri: Uri) =
           return response.Split("\n",StringSplitOptions.RemoveEmptyEntries)
         }
 
+    /// <summary>Get a list of all containers names.</summary>
+    /// <returns>Returns an array with all the containers names.</returns>
     member this.GetContainers() =
         this.GetContainersAsync().Result
 
+    /// <summary>Appends specified events to the end of a stream.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="events">A sequence of <see cref="EventData"/> structures containing
+    /// events informaiton.</param>
     member _.AppendAsync(stream: string, events: EventData seq) =
         task {
             match events.TryGetNonEnumeratedCount() with
@@ -311,8 +428,20 @@ type Client(uri: Uri) =
         } :> Task
 
 
+    /// <summary>Appends specified events to the end of a stream.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="events">A sequence of <see cref="EventData"/> structures containing
+    /// events informaiton.</param>
     member this.Append(stream: string, events) = this.AppendAsync(stream, events).Wait()
 
+    /// <summary>Appends specified events to the end of a stream, if the stream's
+    /// last event number matches provided expected version.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="expectedVersion">The expected number of the last event in the stream.</param>
+    /// <param name="events">A sequence of <see cref="EventData"/> structures containing
+    /// events informaiton.</param>
+    /// <returns>Returns an <see cref="AppendResult"/> indicating if the operation
+    /// succeeded, and in case of success, the new version to expect, as well as next event number.</returns>
     member _.TryAppendAsync(stream: string, expectedVersion: int, events: EventData seq) =
         task {
             use client = new HttpClient()
@@ -340,9 +469,27 @@ type Client(uri: Uri) =
          } 
 
 
+    /// <summary>Appends specified events to the end of a stream, if the stream's
+    /// last event number matches provided expected version.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="expectedVersion">The expected number of the last event in the stream.</param>
+    /// <param name="events">A sequence of <see cref="EventData"/> structures containing
+    /// events informaiton.</param>
+    /// <returns>Returns an <see cref="AppendResult"/> indicating if the operation
+    /// succeeded, and in case of success, the new version to expect, as well as next event number.</returns>
      member this.TryAppend(stream: string, expectedVersion, events) = this.TryAppendAsync(stream, expectedVersion, events).Result
 
 
+    /// <summary>Appends specified events to the end of a stream, if the stream's
+    /// last event number matches provided expected version. If the expected version does not
+    /// match, returns the events that have been added since expected version.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="expectedVersion">The expected number of the last event in the stream.</param>
+    /// <param name="events">A sequence of <see cref="EventData"/> structures containing
+    /// events informaiton.</param>
+    /// <returns>Returns an <see cref="AppendOrReadResult"/> indicating if the operation
+    /// succeeded, the new version to expect, as well as next event number,
+    /// and in case of failure, the list of new events.</returns>
     member _.TryAppendOrReadAsync(stream: string, expectedVersion: int, events: EventData seq) =
         task {
             use client = new HttpClient()
@@ -373,8 +520,27 @@ type Client(uri: Uri) =
          } 
 
 
+    /// <summary>Appends specified events to the end of a stream, if the stream's
+    /// last event number matches provided expected version. If the expected version does not
+    /// match, returns the events that have been added since expected version.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="expectedVersion">The expected number of the last event in the stream.</param>
+    /// <param name="events">A sequence of <see cref="EventData"/> structures containing
+    /// events informaiton.</param>
+    /// <returns>Returns an <see cref="AppendOrReadResult"/> indicating if the operation
+    /// succeeded, the new version to expect, as well as next event number,
+    /// and in case of failure, the list of new events.</returns>
      member this.TryAppendOrRead(stream: string, expectedVersion, events) = this.TryAppendOrReadAsync(stream, expectedVersion, events).Result
 
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
     member _.ReadStreamForwardAsync(stream: string, start: int, count: int, linkOnly: bool) =
         task {
             use client = new HttpClient()
@@ -401,15 +567,47 @@ type Client(uri: Uri) =
                 return failwithf "%s" response.ReasonPhrase
         }
 
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
     member this.ReadStreamForward(stream: string, start: int, count: int, linkOnly: bool) =
         this.ReadStreamForwardAsync(stream,start,count, linkOnly).Result
 
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
     member this.ReadStreamForwardAsync(stream: string, start: int, count: int) =
         this.ReadStreamForwardAsync(stream,start,count, false)
 
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
     member this.ReadStreamForward(stream: string, start: int, count: int) =
         this.ReadStreamForwardAsync(stream,start,count).Result
 
+    /// <summary>Gets the list of the stream names in creation order, starting from specified one.</summary>
+    /// <param name="start">The number of the first stream included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of streamss to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <returns>Returns a <see cref="StreamsSlice"/> that contains stream names,  
+    /// the last stream number, and the next stream number.</returns>
     member this.GetStreamsAsync(start: int, count: int) =
         task {
             let! slice = this.ReadStreamForwardAsync("$streams", start, count, true)
@@ -417,10 +615,17 @@ type Client(uri: Uri) =
             return {
                 State = slice.State
                 Streams = slice.Events |> Array.map (fun e -> e.OriginStream)
-                ExpectedVersion = slice.ExpectedVersion
+                LastEventNumber = slice.ExpectedVersion
                 NextEventNumber = slice.NextEventNumber
             }
         }
 
+    /// <summary>Gets the list of the stream names in creation order, starting from specified one.</summary>
+    /// <param name="start">The number of the first stream included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of streamss to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <returns>Returns a <see cref="StreamsSlice"/> that contains stream names,  
+    /// the last stream number, and the next stream number.</returns>
     member this.GetStreams(start: int, count: int) =
         this.GetStreamsAsync(start, count).Result

@@ -274,7 +274,7 @@ let view model dispatch =
                                     style.flexGrow 1
                                     style.textAlign.center
                                 ]
-                                prop.text "Entries"
+                                prop.text "key / value"
                             ]
                             Html.a [
                                 prop.className "icon-text"
@@ -566,7 +566,7 @@ let view model dispatch =
                     Bulma.panelHeading [
                         Bulma.text.hasTextCentered
                         match model.EventView with
-                        | All -> prop.text "Streams - All"
+                        | All -> prop.text "events / all"
                         | Stream stream -> 
                             prop.style [
                                 style.display.flex
@@ -581,7 +581,7 @@ let view model dispatch =
                                         style.textOverflow.ellipsis
                                         style.whitespace.nowrap
                                     ]
-                                    prop.text $"Stream - {stream}"
+                                    prop.text $"events / {stream}"
                                 ]
                                 Bulma.delete [ 
                                     prop.style [
