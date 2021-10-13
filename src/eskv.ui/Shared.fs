@@ -1,5 +1,6 @@
 ﻿module Shared
 
+type Container = string
 type Key = string
 type ETag = string
 
@@ -12,8 +13,9 @@ type AllStreamData =
     }
 
 type ServerCmd =
-    | KeyChanged of Key*(string*ETag)
-    | KeyDeleted of Key
+    | KeyChanged of Container * Key*(string*ETag)
+    | KeyDeleted of Container * Key
+    | ContainerDeleted of Container
     | StreamUpdated of AllStreamData[]
     | StreamLoaded of AllStreamData[]
-    | KeysLoaded of (Key*(string*ETag)) list
+    | KeysLoaded of (Container * Key*(string*ETag)) list

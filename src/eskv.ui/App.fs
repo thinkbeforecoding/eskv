@@ -4,9 +4,7 @@ open Fable.Core
 open Elmish.React
 
 open Elmish
-open Fable.React
 open Feliz
-open Browser.Types
 open Fetch
 open Feliz.Bulma
 open Browser
@@ -14,7 +12,8 @@ open Shared
 open Style
 
 type Editing = 
-    { Key: Key
+    { Container: Container
+      Key: Key
       Value: string
       ETag: ETag
       Saving: bool}
@@ -33,7 +32,8 @@ type Command =
     | CreateNew
     | OpenNew
     | CloseNew
-    | DeleteKey of string*ETag
+    | DeleteKey of Container*Key*ETag
+    | DeleteContainer of Container
     | Deleted
     | Saved
     | Edit of Editing
@@ -50,7 +50,7 @@ type Model =
       NewValue: string
       ShowCreateNew: bool
       Saving: bool
-      Keys: Map<string, string*ETag>
+      Keys: Map<string, Map<string, string*ETag>>
       Editing: EditState
       Events: (string * int * string*string) list 
       EventView: EventView
@@ -75,14 +75,22 @@ let update (command: Command) (model: Model)  =
     |CreateNew ->
         { model with Saving = true}, 
             Cmd.OfAsync.result (async {
-               let! response =
-                   fetch $"/kv/{model.NewKey}" 
-                    [
-                       requestHeaders [IfNoneMatch "*"]
-                       RequestProperties.Method HttpMethod.PUT
-                       RequestProperties.Body (U3.Case3 model.NewValue)
-                   ] |> Async.AwaitPromise
-               return Saved
+                let container, key =
+                    match model.NewKey.Split('/', 2) |> Array.toList with
+                    | container:: key :: _ -> container, key
+                    | [ key ] -> "default", key
+                    | [] -> "default", "key"
+
+
+                
+                let! response =
+                    fetch $"/kv/{container}/{key}" 
+                        [
+                           requestHeaders [IfNoneMatch "*"]
+                           RequestProperties.Method HttpMethod.PUT
+                           RequestProperties.Body (U3.Case3 model.NewValue)
+                        ] |> Async.AwaitPromise
+                return Saved
                      })
     | OpenNew ->
         { model with ShowCreateNew = true }, Cmd.none
@@ -94,13 +102,24 @@ let update (command: Command) (model: Model)  =
                      ShowCreateNew = false
                      Saving = false}, Cmd.none
                      
-    | DeleteKey(key,etag) ->
+    | DeleteKey(container,key,etag) ->
         { model with Saving = true}, 
             Cmd.OfAsync.result (async {
                let! response =
-                   fetch $"/kv/{key}" 
+                   fetch $"/kv/{container}/{key}" 
                     [
                        requestHeaders [IfMatch etag]
+                       RequestProperties.Method HttpMethod.DELETE
+                   ]
+                   |> Async.AwaitPromise
+               return Saved
+                     })
+    | DeleteContainer(container) ->
+        { model with Saving = true}, 
+            Cmd.OfAsync.result (async {
+               let! response =
+                   fetch $"/kv/{container}" 
+                    [
                        RequestProperties.Method HttpMethod.DELETE
                    ]
                    |> Async.AwaitPromise
@@ -134,17 +153,40 @@ let update (command: Command) (model: Model)  =
         { model with Editing = NoEdit }, Cmd.none
     | ChangeEventView view ->
         { model with EventView = view }, Cmd.none
-    | Server (Shared.KeyChanged (key,value)) ->
+    | Server (Shared.KeyChanged (containerKey, key,value)) ->
         { model with 
-            Keys =  Map.add key value model.Keys
+            Keys =  
+                let container =
+                    Map.tryFind containerKey model.Keys
+                    |> Option.defaultValue Map.empty
+               
+                Map.add containerKey (Map.add key value container) model.Keys
+
         }, Cmd.none
-    | Server (Shared.KeyDeleted key) ->
+    | Server (Shared.KeyDeleted (containerKey, key)) ->
         { model with 
-            Keys =  Map.remove key model.Keys
+            Keys =
+                model.Keys
+                |> Map.change containerKey (function
+                    | None -> None
+                    | Some container -> 
+                        Some (Map.remove key container))  
+        }, Cmd.none
+    | Server (Shared.ContainerDeleted containerKey) ->
+        { model with 
+            Keys =
+                model.Keys
+                |> Map.remove containerKey
         }, Cmd.none
     | Server (Shared.KeysLoaded keys) ->
        { model with
-            Keys = Map.ofList keys}, Cmd.none
+            Keys = 
+                keys
+                |> List.groupBy (fun (containerKey,_,_) -> containerKey)
+                |> List.map(fun (containerKey, entries) -> 
+                    containerKey, entries |> List.map(fun (_,k,v) -> k,v) |> Map.ofList
+                )
+                |> Map.ofList }, Cmd.none
     | Server (Shared.StreamUpdated stream ) ->
         { model with
             Events =
@@ -296,6 +338,7 @@ let view model dispatch =
                                             dispatch CloseNew
                                         | _ -> ()
                                         )
+                                    prop.placeholder "container/key"
                                 ]
                             ]
                             Html.td [ 
@@ -380,103 +423,140 @@ let view model dispatch =
                                 ]
                             ]
                     else
-                        for key,(v,etag) in Map.toList model.Keys do
+                        for container, keys in Map.toSeq model.Keys do
                             Html.tr [
-                                table.tdEllipsis [
-                                            prop.className "key"
-                                            prop.text key
+                                prop.style [
+                                    //style.borderBottom(length.px 1, borderStyle.solid, "#dddddd")
+                                    style.borderTop(length.px 1, borderStyle.solid, "#dddddd")
+                                    style.backgroundColor "#f3f3f3"
                                 ]
-
-                                table.tdEllipsis [
-                                    match model.Editing with
-                                    | Editing {Key = k; Value= v; Saving = saving} when k = key ->
-                                        prop.children [
-                                            Bulma.input.text [
-                                                prop.disabled saving
-                                                prop.value v
-                                                prop.onChange (dispatch << EditChanged)
-                                                prop.onKeyDown(fun e -> 
-                                                    match e.key with
-                                                    | "Enter" ->
-                                                        dispatch SaveEdit
-                                                    | "Escape" ->
-                                                        dispatch CancelEdit
-                                                    | _ -> ()
-                                                      )
-                                            ]
-                                        ]
-
-                                    | _ ->
-                                        prop.onClick (fun _ -> dispatch (Edit { Key = key; Value = v; ETag = etag; Saving = false}))
-                                        prop.text v
-                                        prop.className "editable"
+                                prop.children [
+                                    Html.td [
+                                        prop.style [ 
+                                            style.paddingLeft (length.em 0.75)
+                                            style.paddingTop (length.em 0.25)
+                                            style.paddingBottom (length.em 0.25)
+                                            style.paddingRight (length.em 0.75)
+                                        ] 
+                                        Bulma.text.hasTextWeightSemibold
                                         
-                                    
-                                ]
-                                Html.td [
-                                    Bulma.column.isNarrow
-                                    prop.children [
-                                        match model.Editing with
-                                        | Editing { Key = k; Saving = saving; ETag = oldEtag} when k = key ->
-                                            if oldEtag <> etag then
-                                                Html.a [
-                                                    prop.children [
-                                                        Bulma.icon [
-                                                            prop.children [
-                                                                Html.i [ prop.className "fas fa-exclamation-triangle" ]
-                                                            ]
+                                        prop.colSpan 2
+                                        prop.text (container+"/")
 
-                                                            Bulma.color.hasTextDanger
-                                                        ]
-                                                        
-                                                    ]
-                                                    Bulma.tooltip.text "Value has changed"
-                                                    Bulma.tooltip.hasTooltipDanger
-                                                    prop.className "has-tooltip-danger"
-                                                    prop.disabled true
-                                                ]
-
-                                            else
-                                                Html.a [
-
-                                                    prop.disabled (saving)
-
-                                                    prop.children [
-                                                        Bulma.icon [
-                                                            Html.i [ prop.className "fas fa-check" ]
-                                                        ]
-                                                    ]
-                                                    prop.onClick (fun _ -> dispatch SaveEdit )
-                                                ]
-
-                                            Html.a [
-                                                prop.disabled saving
-                                                prop.children [
-                                                    Bulma.icon [
-                                                        Html.i [ prop.className "fas fa-times" ]
-                                                    ]
-                                                ]
-                                                prop.onClick (fun _ -> dispatch CancelEdit )
-                                            ]
-                                        | _ ->
+                                    ]
+                                    Html.td [
+                                        Bulma.column.isNarrow
+                                        prop.children [
                                             Html.a [
                                                 prop.children [
                                                     Bulma.icon [
                                                         Html.i [ prop.className "fas fa-trash" ]
                                                     ]
                                                 ]
-                                                prop.onClick (fun _ -> dispatch (DeleteKey (key,etag)) )
+                                                prop.onClick (fun _ -> dispatch (DeleteContainer (container)) )
                                             ]
-                                            Html.a [
-                                                prop.children [
-                                                    Bulma.icon [
-                                                        
-                                                    ]
+                                        
+                                        ]
+                                   ]
+                                ]
+                            ]
+                            for key,(v,etag) in Map.toSeq keys do
+                                Html.tr [
+                                    table.tdEllipsis [
+                                                prop.className "key"
+                                                prop.text key
+                                    ]
+
+                                    table.tdEllipsis [
+                                        match model.Editing with
+                                        | Editing {Key = k; Value= v; Saving = saving} when k = key ->
+                                            prop.children [
+                                                Bulma.input.text [
+                                                    prop.disabled saving
+                                                    prop.value v
+                                                    prop.onChange (dispatch << EditChanged)
+                                                    prop.onKeyDown(fun e -> 
+                                                        match e.key with
+                                                        | "Enter" ->
+                                                            dispatch SaveEdit
+                                                        | "Escape" ->
+                                                            dispatch CancelEdit
+                                                        | _ -> ()
+                                                          )
                                                 ]
                                             ]
 
-
+                                        | _ ->
+                                            prop.onClick (fun _ -> dispatch (Edit { Container = container; Key = key; Value = v; ETag = etag; Saving = false}))
+                                            prop.text v
+                                            prop.className "editable"
+                                            
+                                        
                                     ]
+                                    Html.td [
+                                        Bulma.column.isNarrow
+                                        prop.children [
+                                            match model.Editing with
+                                            | Editing { Key = k; Saving = saving; ETag = oldEtag} when k = key ->
+                                                if oldEtag <> etag then
+                                                    Html.a [
+                                                        prop.children [
+                                                            Bulma.icon [
+                                                                prop.children [
+                                                                    Html.i [ prop.className "fas fa-exclamation-triangle" ]
+                                                                ]
+
+                                                                Bulma.color.hasTextDanger
+                                                            ]
+                                                            
+                                                        ]
+                                                        Bulma.tooltip.text "Value has changed"
+                                                        Bulma.tooltip.hasTooltipDanger
+                                                        prop.className "has-tooltip-danger"
+                                                        prop.disabled true
+                                                    ]
+
+                                                else
+                                                    Html.a [
+
+                                                        prop.disabled (saving)
+
+                                                        prop.children [
+                                                            Bulma.icon [
+                                                                Html.i [ prop.className "fas fa-check" ]
+                                                            ]
+                                                        ]
+                                                        prop.onClick (fun _ -> dispatch SaveEdit )
+                                                    ]
+
+                                                Html.a [
+                                                    prop.disabled saving
+                                                    prop.children [
+                                                        Bulma.icon [
+                                                            Html.i [ prop.className "fas fa-times" ]
+                                                        ]
+                                                    ]
+                                                    prop.onClick (fun _ -> dispatch CancelEdit )
+                                                ]
+                                            | _ ->
+                                                Html.a [
+                                                    prop.children [
+                                                        Bulma.icon [
+                                                            Html.i [ prop.className "fas fa-trash" ]
+                                                        ]
+                                                    ]
+                                                    prop.onClick (fun _ -> dispatch (DeleteKey (container,key,etag)) )
+                                                ]
+                                                Html.a [
+                                                    prop.children [
+                                                        Bulma.icon [
+                                                            
+                                                        ]
+                                                    ]
+                                                ]
+
+
+                                        ]
                             ]
                         ]
                 ]

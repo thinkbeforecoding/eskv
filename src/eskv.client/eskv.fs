@@ -75,6 +75,8 @@ module ExpectedVersion =
 type Client(uri: Uri) =
     let kv = Uri(uri, "kv/")
     let es = Uri(uri, "es/")
+    [<Literal>]
+    let defaultContainer = "default"
 
     let raiseHttpException(response: HttpResponseMessage) =
         raise (HttpRequestException(response.ReasonPhrase, null, Nullable response.StatusCode))
@@ -147,10 +149,10 @@ type Client(uri: Uri) =
     new() = Client(Uri "http://localhost:5000")
 
     
-    member _.TryLoadAsync(key: string) =
+    member _.TryLoadAsync(container: string, key: string) =
         task {
             use client = new HttpClient()
-            let! response  = client.GetAsync(Uri(kv, key))
+            let! response  = client.GetAsync(Uri(kv, container + "/" + key))
             match response.StatusCode with
             | HttpStatusCode.NotFound ->
                 return { KeyExists = false; Value = null; ETag = null }
@@ -169,10 +171,14 @@ type Client(uri: Uri) =
         } 
 
        
+    member this.TryLoadAsync(key: string) =
+        this.TryLoadAsync(defaultContainer, key)
+
+    member this.TryLoad(container, key) = this.TryLoadAsync(container, key).Result
 
     member this.TryLoad(key) = this.TryLoadAsync(key).Result
 
-    member _.TrySaveAsync(key: string, value: string, etag: string) =
+    member _.TrySaveAsync(container: string, key: string, value: string, etag: string) =
         task {
             use client = new HttpClient()
             if not (isNull etag) then
@@ -180,7 +186,7 @@ type Client(uri: Uri) =
             else
                 client.DefaultRequestHeaders.IfNoneMatch.Add(Headers.EntityTagHeaderValue.Any)
 
-            let! response = client.PutAsync(Uri(kv,key), new StringContent(value))
+            let! response = client.PutAsync(Uri(Uri(kv,container),key), new StringContent(value))
             
             match response.StatusCode with
             | HttpStatusCode.Conflict ->
@@ -192,43 +198,92 @@ type Client(uri: Uri) =
                 
         }
 
+    member this.TrySaveAsync(key: string, value: string, etag: string) =
+        this.TrySaveAsync(defaultContainer, key, value, etag)
+
+    member this.TrySave(container, key, value, etag) = this.TrySaveAsync(container, key, value, etag).Result
+
     member this.TrySave(key, value, etag) = this.TrySaveAsync(key, value, etag).Result
 
-    member _.SaveAsync(key: string, value: string) =
+
+
+    member _.SaveAsync(container: string, key: string, value: string) =
         task {
             use client = new HttpClient()
 
-            let! response = client.PutAsync(Uri(kv,key), new StringContent(value))
+            let! response = client.PutAsync(Uri(kv, container + "/" + key), new StringContent(value))
             if not response.IsSuccessStatusCode then
                 return raiseHttpException(response)
         } :> Task
 
+    member this.SaveAsync(key: string, value: string) =
+        this.SaveAsync(defaultContainer, key, value)
+    
+    member this.Save(container, key, value) = this.SaveAsync(container, key, value).Wait()
+
     member this.Save(key, value) = this.SaveAsync(key, value).Wait()
 
 
-    member _.DeleteAsync(key: string) =
+    member _.DeleteKeyAsync(container: string, key: string) =
       task {
           use client = new HttpClient()
 
-          let! response = client.DeleteAsync(Uri(kv,key))
+          let! response = client.DeleteAsync(Uri(kv, container + "/" + key))
+
           if not response.IsSuccessStatusCode
                 && response.StatusCode <> HttpStatusCode.NotFound then
               return raiseHttpException(response)
       } :> Task
 
-    member this.Delete(key: string) =
-        this.DeleteAsync(key).Wait()
+    member this.DeleteKeyAsync(key: string) =
+        this.DeleteKeyAsync(defaultContainer, key)
 
+    member this.DeleteKey(container, key: string) =
+        this.DeleteKeyAsync(container, key).Wait()
 
-    member _.GetKeysAsync() =
+    member this.DeleteKey(key: string) =
+        this.DeleteKeyAsync(key).Wait()
+
+    member _.DeleteContainerAsync(container: string) =
+      task {
+          use client = new HttpClient()
+
+          let! response = client.DeleteAsync(Uri(kv, container))
+          if not response.IsSuccessStatusCode
+                && response.StatusCode <> HttpStatusCode.NotFound then
+              return raiseHttpException(response)
+      } :> Task
+
+    member this.DeleteContainer(container: string) =
+        this.DeleteContainerAsync(container).Wait()
+
+    member _.GetKeysAsync(container: string) =
+        task {
+          use client = new HttpClient()
+
+          let! response = client.GetStringAsync(Uri(kv, container))
+          return response.Split("\n",StringSplitOptions.RemoveEmptyEntries)
+        }
+
+    member this.GetKeysAsync() =
+        this.GetKeysAsync(defaultContainer)
+
+    member this.GetKeys(container) =
+        this.GetKeysAsync(container).Result
+
+    member this.GetKeys() =
+        this.GetKeysAsync().Result
+
+    member _.GetContainersAsync() =
         task {
           use client = new HttpClient()
 
           let! response = client.GetStringAsync(kv)
           return response.Split("\n",StringSplitOptions.RemoveEmptyEntries)
         }
-    member this.GetKeys() =
-        this.GetKeysAsync().Result
+
+    member this.GetContainers() =
+        this.GetContainersAsync().Result
 
     member _.AppendAsync(stream: string, events: EventData seq) =
         task {

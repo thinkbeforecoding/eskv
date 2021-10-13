@@ -51,7 +51,7 @@ type Entry =
         
 
 let cts = new CancellationTokenSource()
-let data = ConcurrentDictionary<Key, Entry>()
+let data = ConcurrentDictionary<string, ConcurrentDictionary<Key, Entry>>()
 
 //type EventData =
 //    { Type: string 
@@ -131,13 +131,38 @@ app.MapGet("/kv/",  fun ctx ->
     
     } :> Task
     
-               ) |> ignore
+) |> ignore
 
+app.MapGet("/kv/{container}",  fun ctx ->
+    task {
 
-app.MapGet("/kv/{key}", fun ctx -> 
+        let containerKey = ctx.Request.RouteValues.["container"] |> string
+        ctx.Response.ContentType <- "text/plain"
+        match data.TryGetValue(containerKey) with
+        | true, container ->
+            for key in container.Keys do
+                
+                let len = Text.Encoding.UTF8.GetByteCount(key)
+                let data = ctx.Response.BodyWriter.GetSpan(len+1)
+                let written = Text.Encoding.UTF8.GetBytes(key.AsSpan(), data)
+                data.[written] <- 10uy
+
+                ctx.Response.BodyWriter.Advance(written+1)
+            do! ctx.Response.BodyWriter.CompleteAsync()
+        | false, _ ->
+            ctx.Response.StatusCode <- 404
+    } :> Task
+    
+) |> ignore
+
+app.MapGet("/kv/{container}/{key}", fun ctx -> 
     task {
         let key = ctx.Request.RouteValues.["key"] |> string
-        match data.TryGetValue(key) with
+        let containerKey = ctx.Request.RouteValues.["container"] |> string
+
+        let container = data.GetOrAdd(containerKey, fun _ -> ConcurrentDictionary())
+
+        match container.TryGetValue(key) with
         | false, _ -> 
                 ctx.Response.StatusCode <- 404
         | true, entry ->
@@ -153,9 +178,10 @@ app.MapGet("/kv/{key}", fun ctx ->
 
 
 
-app.MapPut("/kv/{key}", fun ctx ->
+app.MapPut("/kv/{container}/{key}", fun ctx ->
     task {
         let key = ctx.Request.RouteValues.["key"] |> string
+        let containerKey = ctx.Request.RouteValues.["container"] |> string
 
         let contentType = ctx.Request.ContentType
         let length = ctx.Request.Headers.ContentLength
@@ -171,62 +197,82 @@ app.MapPut("/kv/{key}", fun ctx ->
         ctx.Request.BodyReader.AdvanceTo(result.Buffer.End)
         
         let newEtag = Etag.ofBytes bytes
-        
+
+        let container = data.GetOrAdd(containerKey, fun _ -> ConcurrentDictionary())        
 
         if ctx.Request.Headers.IfNoneMatch.Count = 1 && ctx.Request.Headers.IfNoneMatch.[0] = "*" then
             // the data should not already exist:
-            if data.TryAdd(key, { Etag = newEtag; Bytes = bytes; ContentType = contentType} ) then
+            if container.TryAdd(key, { Etag = newEtag; Bytes = bytes; ContentType = contentType} ) then
                 ctx.Response.StatusCode <- 204
                 ctx.Response.Headers.ETag <-  newEtag
-                do! publish (Shared.KeyChanged(key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
+                do! publish (Shared.KeyChanged(containerKey, key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
             else
                 ctx.Response.StatusCode <- 409 // conflict
         else 
             let etags = ctx.Request.Headers.IfMatch
             if etags.Count = 1 then
-                if data.TryUpdate(key,{ Etag = newEtag ; Bytes = bytes; ContentType = contentType }, { Etag = etags.[0]; Bytes = null; ContentType = null }) then
+                if container.TryUpdate(key,{ Etag = newEtag ; Bytes = bytes; ContentType = contentType }, { Etag = etags.[0]; Bytes = null; ContentType = null }) then
                     ctx.Response.StatusCode <- 204
                     ctx.Response.Headers.ETag <-  newEtag
-                    do! publish (Shared.KeyChanged(key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
+                    do! publish (Shared.KeyChanged(containerKey, key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
                 else
                     ctx.Response.StatusCode <- 409 // conflict
 
 
             else
                 // save data without etag check
-                data.[key] <- { Etag = newEtag ; Bytes = bytes; ContentType = contentType }
+                container.[key] <- { Etag = newEtag ; Bytes = bytes; ContentType = contentType }
                 ctx.Response.StatusCode <- 204
                 ctx.Response.Headers.ETag <-  newEtag
-                do! publish (Shared.KeyChanged(key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
+                do! publish (Shared.KeyChanged(containerKey, key, (Text.Encoding.UTF8.GetString(bytes), newEtag)))
 
 
             } :> Task
 ) |> ignore
 
-app.MapDelete("/kv/{key}", fun ctx ->
+app.MapDelete("/kv/{container}/{key}", fun ctx ->
     task {
         let key = ctx.Request.RouteValues.["key"] |> string
+        let containerKey = ctx.Request.RouteValues.["container"] |> string
 
         let etags = ctx.Request.Headers.IfMatch
-        if etags.Count = 1 then
-            if data.TryUpdate(key,{ Etag = "" ; Bytes = null; ContentType = null },{ Etag = etags.[0]; Bytes = null; ContentType = null }) then
-                data.TryRemove(key) |> ignore
-                ctx.Response.StatusCode <- 204
-                do! publish (Shared.KeyDeleted(key))
+        match data.TryGetValue(containerKey) with
+        | true, container ->
+            if etags.Count = 1 then
+                if container.TryUpdate(key,{ Etag = "" ; Bytes = null; ContentType = null },{ Etag = etags.[0]; Bytes = null; ContentType = null }) then
+                    data.TryRemove(key) |> ignore
+                    ctx.Response.StatusCode <- 204
+                    do! publish (Shared.KeyDeleted(containerKey, key))
+                else
+                    ctx.Response.StatusCode <- 409 // conflict
+
+
             else
-                ctx.Response.StatusCode <- 409 // conflict
-
-
-        else
-            // save data without etag check
-            data.TryRemove(key)|> ignore
+                // save data without etag check
+                data.TryRemove(key)|> ignore
+                ctx.Response.StatusCode <- 204
+                do! publish (Shared.KeyDeleted(containerKey, key))
+        | false, _ ->
             ctx.Response.StatusCode <- 204
-            do! publish (Shared.KeyDeleted(key))
 
 
             } :> Task
 ) |> ignore
 
+app.MapDelete("/kv/{container}", fun ctx ->
+    task {
+        let containerKey = ctx.Request.RouteValues.["container"] |> string
+
+        match data.TryRemove(containerKey) with
+        | true, container ->
+            
+                do! publish (Shared.ContainerDeleted(containerKey))
+        | false, _ -> ()
+        ctx.Response.StatusCode <- 204
+
+
+            } :> Task
+) |> ignore
 
 
 let decode (bytes: byte[]) (contentType: string) =
@@ -253,8 +299,9 @@ app.MapGet("/ws", fun ctx ->
 
               let msg =
                   data
-                  |> Seq.filter (fun kv ->  kv.Value.Etag.Length <> 0 )
-                  |> Seq.map (fun (KeyValue(k,v)) -> k, (decode v.Bytes v.ContentType, v.Etag))
+                  |> Seq.collect(fun kv -> kv.Value |> Seq.map( fun v -> kv.Key, v.Key, v.Value))
+                  |> Seq.filter (fun (_,_,v) ->  v.Etag.Length <> 0 )
+                  |> Seq.map (fun (container,key,v) -> container,key, (decode v.Bytes v.ContentType, v.Etag))
                   |> Seq.toList
                   |> Shared.KeysLoaded
 
