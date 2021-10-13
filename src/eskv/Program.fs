@@ -18,19 +18,26 @@ open AspNetExtensions
 open Streams
 
 type Cmd =
+    | EndPoint of string
     | Dev
     | Parcel of string
-    | EndPoint of string
     with
     interface IArgParserTemplate with
         member this.Usage =
             match this with
             | Dev -> "specify dev mode."
             | Parcel _ -> "parcel dev server url. default is http://localhost:1234"
-            | EndPoint _ -> "kv http listener endpoint. default is http://localhost:5000"
+            | EndPoint _ -> "eskv http listener endpoint. default is http://localhost:5000"
 
+let parser = ArgumentParser.Create<Cmd>()
+let cmd =
+    try
+        parser.ParseCommandLine()
+    with
+    | ex ->
+        printfn "%s" ex.Message
+        exit 0
 
-let cmd = ArgumentParser.Create<Cmd>().ParseCommandLine()
 let isDevMode = cmd.Contains Dev
 let parcelUrl = cmd.TryGetResult Parcel |> Option.defaultValue "http://localhost:1234"
 let endpoint = cmd.TryGetResult EndPoint |> Option.defaultValue "http://localhost:5000"
@@ -52,20 +59,6 @@ type Entry =
 
 let cts = new CancellationTokenSource()
 let data = ConcurrentDictionary<string, ConcurrentDictionary<Key, Entry>>()
-
-//type EventData =
-//    { Type: string 
-//      Data: byte[]
-//      ContentType: string }
-
-//let streams = ConcurrentDictionary<string, ResizeArray<EventData>>()
-
-//type AllStreamData =
-//    { Stream: string
-//      Position: int
-//      Event: EventData
-//    }
-//let allStream = ResizeArray<EventData>()
 
 let sessions = ConcurrentDictionary<WebSocket,obj>()
 
