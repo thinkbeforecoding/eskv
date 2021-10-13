@@ -342,6 +342,39 @@ app.MapGet("/ws", fun ctx ->
 ) |> ignore
 
 
+let renderSliceContent includeLink (slice: ReadOnlyMemory<Event>) = 
+    let content = new MultipartContent()
+    let span = slice.Span
+    for i in 0.. span.Length-1 do
+        let e = span.[i]
+
+        match e with
+        | Record record -> 
+            let part = new ByteArrayContent(record.Event.Data)
+            part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(record.Event.ContentType)
+            part.Headers.Add("ESKV-Event-Type", record.Event.Type)
+            part.Headers.Add("ESKV-Event-Number", string record.EventNumber)
+
+            content.Add(part)
+        | Link l -> 
+            
+            let part =
+            
+                if includeLink then
+                    new ByteArrayContent(l.OriginEvent.Event.Data)
+                else
+                    new ByteArrayContent([||])
+            part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(l.OriginEvent.Event.ContentType)
+            part.Headers.Add("ESKV-Event-Number", string l.EventNumber)
+            part.Headers.Add("ESKV-Origin-Stream", string l.OriginEvent.StreamId)
+            if includeLink then
+                part.Headers.Add("ESKV-Origin-Event-Number", string l.OriginEvent.EventNumber)
+                part.Headers.Add("ESKV-Event-Type", l.OriginEvent.Event.Type)
+
+            content.Add(part)
+
+    content
+
 let renderSlice (response: HttpResponse) (streamId: string) includeLink start (slice: ReadOnlyMemory<Event>) =
     task {
         response.Headers.Add("ESKV-Stream", streamId)
@@ -350,39 +383,10 @@ let renderSlice (response: HttpResponse) (streamId: string) includeLink start (s
         if slice.Length = 0 then
             response.StatusCode <- 204
         else
-            let content = new MultipartContent()
-            response.ContentType <- string content.Headers.ContentType
             
-            do
-                let span = slice.Span
-                for i in 0.. span.Length-1 do
-                    let e = span.[i]
-
-                    match e with
-                    | Record record -> 
-                        let part = new ByteArrayContent(record.Event.Data)
-                        part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(record.Event.ContentType)
-                        part.Headers.Add("ESKV-Event-Type", record.Event.Type)
-                        part.Headers.Add("ESKV-Event-Number", string record.EventNumber)
-
-                        content.Add(part)
-                    | Link l -> 
-                        
-                        let part =
-                        
-                            if includeLink then
-                                new ByteArrayContent(l.OriginEvent.Event.Data)
-                            else
-                                new ByteArrayContent([||])
-                        part.Headers.ContentType <- Headers.MediaTypeHeaderValue.Parse(l.OriginEvent.Event.ContentType)
-                        part.Headers.Add("ESKV-Event-Number", string l.EventNumber)
-                        part.Headers.Add("ESKV-Origin-Stream", string l.OriginEvent.StreamId)
-                        if includeLink then
-                            part.Headers.Add("ESKV-Origin-Event-Number", string l.OriginEvent.EventNumber)
-                            part.Headers.Add("ESKV-Event-Type", l.OriginEvent.Event.Type)
-
-                        content.Add(part)
-
+            let content = renderSliceContent includeLink slice
+            
+            response.ContentType <- string content.Headers.ContentType
                 
             do! content.CopyToAsync(response.Body)
     }
