@@ -98,6 +98,12 @@ app.MapGet("/", fun  (ctx: HttpContext) ->
         )
         |> ignore
 
+app.MapGet("/favicon.ico", fun  (ctx: HttpContext) ->
+    ctx.Response.Headers.ContentType <- "image/png"
+    ctx.Response.SendWebFileAsync("favicon.ico")
+    )
+    |> ignore
+
 
 if isDevMode then
     app.MapGet("/content/{**path}", fun ctx ->
