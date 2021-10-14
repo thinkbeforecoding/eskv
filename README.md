@@ -2,7 +2,7 @@
 
 [![build](https://github.com/thinkbeforecoding/eskv/actions/workflows/dotnet.yml/badge.svg)](https://github.com/thinkbeforecoding/eskv/actions/workflows/dotnet.yml)
 
-_eskv_ is an in-memory key/value and event store, for education purpose.
+_eskv_ is an in-memory key/value and event store, for educational purpose.
 
 ## Disclamer
 **_eskv_ is not meant to be run in production**. _eskv_ has been created to ease the _learning_ of event sourcing. Use a production-ready event store for production.
@@ -72,3 +72,4 @@ Add it to your project using the IDE, or the following command:
  #r "nuget: eskv.client"
  ```
 
+ Read the full [_eskv.client_ documentation](docs/eskv.client.md).

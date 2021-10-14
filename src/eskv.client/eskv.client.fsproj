@@ -5,18 +5,27 @@
     <GenerateDocumentationFile>true</GenerateDocumentationFile>
     <LangVersion>preview</LangVersion>
     <IsPackable>true</IsPackable>
+    <PackageReadmeFile>eskv.client.md</PackageReadmeFile>
+    <Authors>Jérémie Chassaing</Authors>
+    <Company>thinkbeforecoding</Company>
+    <Description>Client library for eskv in-memory key/value and event store, for educational purpose.</Description>
+    <PackageProjectUrl>https://github.com/thinkbeforecoding/eskv</PackageProjectUrl>
+    <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
+    <Icone>eskv.png</Icone>
   </PropertyGroup>
 
   <ItemGroup>
+    <None Include="..\..\docs\eskv.client.md" Link="docs\eskv.client.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\LICENSE.md" Link="docs\LICENSE.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\docs\eskv.png" Link="docs\eskv.img" Pack="true" PackagePath="\" />
     <Compile Include="Hashing.fs" />
     <Compile Include="eskv.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
-  </ItemGroup>
-  <ItemGroup>
     <PackageReference Update="FSharp.Core" Version="6.0.0" />
   </ItemGroup>
+  <ItemGroup />
 
 </Project>

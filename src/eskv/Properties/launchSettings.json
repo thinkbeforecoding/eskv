@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "eskv": {
-      "commandName": "Project",
-      "commandLineArgs": "--dev"
-    }
-  }
-}
