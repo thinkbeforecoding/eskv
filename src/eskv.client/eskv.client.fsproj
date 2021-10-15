@@ -11,7 +11,7 @@
     <Description>Client library for eskv in-memory key/value and event store, for educational purpose.</Description>
     <PackageProjectUrl>https://github.com/thinkbeforecoding/eskv</PackageProjectUrl>
     <PackageLicenseFile>LICENSE.md</PackageLicenseFile>
-    <Icone>eskv.png</Icone>
+    <PackageIcon>eskv.png</PackageIcon>
   </PropertyGroup>
 
   <ItemGroup>
