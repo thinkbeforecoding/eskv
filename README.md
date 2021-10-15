@@ -72,4 +72,4 @@ Add it to your project using the IDE, or the following command:
  #r "nuget: eskv.client"
  ```
 
- Read the full [_eskv.client_ documentation](docs/eskv.client.md).
+ Read the full [_eskv.client_ documentation](https://github.com/thinkbeforecoding/eskv/blob/main/docs/eskv.client.md).

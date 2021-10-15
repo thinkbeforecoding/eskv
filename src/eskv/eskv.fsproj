@@ -16,6 +16,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <Content Remove="wwwroot\favicon.ico" />
     <Content Remove="wwwroot\index.html" />
   </ItemGroup>
 
@@ -26,8 +27,9 @@
     <EmbeddedResource Include="..\..\dist\App.fs.js" Link="wwwroot\content\App.fs.js">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
+    <EmbeddedResource Include="wwwroot\favicon.ico" />
     <EmbeddedResource Include="wwwroot\index.html" />
-    <None Include="..\..\README.md" Link="docs\README.md" Pack="true" PackagePath="\" />
+    <None Include="..\..\README.md" Link="README.md" Pack="true" PackagePath="\" />
     <None Include="..\..\LICENSE.md" Link="docs\LICENSE.md" Pack="true" PackagePath="\" />
     <None Include="..\..\docs\eskv.png" Link="docs\eskv.img" Pack="true" PackagePath="\" />
     <Compile Include="..\eskv.ui\Shared.fs" Link="Shared.fs" />
