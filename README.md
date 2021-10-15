@@ -73,3 +73,8 @@ Add it to your project using the IDE, or the following command:
  ```
 
  Read the full [_eskv.client_ documentation](https://github.com/thinkbeforecoding/eskv/blob/main/docs/eskv.client.md).
+
+
+ ## Copyright and License
+
+Code copyright Jérémie Chassaing. _eskv_ and _eskv.client_ are released under the [Academic Public License](https://github.com/thinkbeforecoding/eskv/blob/main/LICENSE.md).

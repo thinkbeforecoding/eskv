@@ -32,5 +32,6 @@ client.Save("Hello","World")
 
 Execute it in F# interactive or with `dotnet fsi eskv.fsx` with eskv server running, and a browser open on http://localhost:5000. You should see a new `Hello` key with value `World` appear in the default container.
 
+ ## Copyright and License
 
-
+Code copyright Jérémie Chassaing. _eskv_ and _eskv.client_ are released under the [Academic Public License](https://github.com/thinkbeforecoding/eskv/blob/main/LICENSE.md).

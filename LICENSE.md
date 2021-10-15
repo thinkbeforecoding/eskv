@@ -1,5 +1,7 @@
 # eskv License
 
+Copyright (c) Jérémie Chassaing
+
 The following license governs the use of eskv in non-commercial academic environments. Commercial use requires a commercial license (<jeremie.chassaing@thinkbeforecoding.com>).
 
 ## ACADEMIC PUBLIC LICENSE (eskv, v1.0)
