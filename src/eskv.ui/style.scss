@@ -1,6 +1,20 @@
-﻿
+﻿// Colors
+
+$grey-darker: #282a2c;
+$white: #FAFBEF;
+$turquoise: #A1C3AF;
+$orange: #CF5B23;
+$white-bis: adjust-color($white, $lightness:-2%);
+
+$grey-lightest:  #f3ebc6;
+$blue: #49639a;
+$red: #de281c;
+
+$black: #4b4805;
+
 @import "./node_modules/bulma/bulma.sass";
 @import "./node_modules/@creativebulma/bulma-tooltip/src/sass/index.sass";
+
 
 .key {
     padding-bottom: .5em;
@@ -13,7 +27,7 @@
 
 .editable:hover {
     cursor: pointer;
-    border-color: #dbdbdb;
+    border-color: $border;
 
 }
 
@@ -26,7 +40,7 @@ table th {
 
 
 .editable {
-    border-color: #dbdbdb;
+    border-color: $border;
     border-radius: 4px;
     border-color: transparent;
     padding-bottom: calc(.5em - 1px);
@@ -40,3 +54,11 @@ table th {
 .is-cell {
     padding-left: 0.75em;
 }
+
+.key-container {
+    border-top: 1px, solid, $border-light;
+    background-color: adjust-color($grey-lightest, $lightness:6%);
+
+}
+
+

@@ -425,11 +425,7 @@ let view model dispatch =
                     else
                         for container, keys in Map.toSeq model.Keys do
                             Html.tr [
-                                prop.style [
-                                    //style.borderBottom(length.px 1, borderStyle.solid, "#dddddd")
-                                    style.borderTop(length.px 1, borderStyle.solid, "#dddddd")
-                                    style.backgroundColor "#f3f3f3"
-                                ]
+                                prop.className "key-container"
                                 prop.children [
                                     Html.td [
                                         prop.style [ 
@@ -701,10 +697,28 @@ let view model dispatch =
                             prop.style [
                                 style.fontStyle.italic
                             ]
-                            Bulma.color.hasTextGrey
+                            //Bulma.color.hasTextGrey
                            
                             prop.text "// thinkbeforecoding"
                             prop.href "https://thinkbeforecoding.com"
+                        ]
+                        Html.text " "
+                        Html.a [
+                            prop.children [
+                                Bulma.icon [
+                                    Html.i [ prop.className "fab fa-twitter" ]
+                                ]
+                            ]
+                            prop.href "https://twitter.com/thinkb4coding"
+                        ]
+                        Html.text " "
+                        Html.a [
+                            prop.children [
+                                Bulma.icon [
+                                    Html.i [ prop.className "fab fa-github" ]
+                                ]
+                            ]
+                            prop.href "https://github.com/thinkbeforecoding/eskv"
                         ]
                     ]
                 ]
