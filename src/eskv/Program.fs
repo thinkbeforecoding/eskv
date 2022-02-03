@@ -248,7 +248,7 @@ app.MapDelete("/kv/{container}/{key}", fun ctx ->
 
             else
                 // save data without etag check
-                data.TryRemove(key)|> ignore
+                container.TryRemove(key)|> ignore
                 ctx.Response.StatusCode <- 204
                 do! publish (Shared.KeyDeleted(containerKey, key))
         | false, _ ->
