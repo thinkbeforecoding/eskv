@@ -6,17 +6,59 @@ open System.Security.Cryptography
 open System.Buffers
 open System.Runtime.InteropServices
 open System.Runtime.CompilerServices
-open Microsoft.AspNetCore.WebUtilities
 open System.Collections.Generic
+open FSharp.NativeInterop
 
 
+#nowarn "9"
 module private Native =
     let inline asRef (x: 'a inref) = &Unsafe.AsRef(&x)
     let inline asSpan (x: 'a inref) = MemoryMarshal.CreateReadOnlySpan(&asRef &x,1)
 
     let inline asBytes (x: 'a inref) = MemoryMarshal.AsBytes(asSpan &x)
+    let inline stackalloc<'t when 't : unmanaged> n = Span<'t>(NativePtr.toVoidPtr(NativePtr.stackalloc<'t>(n)), n)
+#warn "9"
 
 open Native
+
+module private Base64 =
+    let  base64 = [| yield! [|'A' .. 'Z'|]; yield! [| 'a' .. 'z' |] ; yield! [| '0' .. '9' |]; '-'; '_' |]
+
+    let encode (data: ReadOnlySpan<byte>) =
+        let str = stackalloc<char> (((data.Length+2)/3)*4)
+        let blocks = data.Length / 3
+        let srcEnd = blocks * 3
+        let safe = data.Slice(0,srcEnd)
+        for i in 0 .. blocks-1 do
+            let n = i*3
+            let d1 = safe[n]
+            let d2 = safe[n+1]
+            let d3 = safe[n+2]
+
+            let j = i*4
+            str[j] <- base64[ int (d1 >>> 2) ]
+            str[j+1] <- base64[ int (((d1 &&& 0b11uy) <<< 4) ||| (d2 >>> 4)) ]
+            str[j+2] <- base64[ int ((d2 &&& 0b1111uy)<<< 2 ||| (d3 >>> 6))]
+            str[j+3] <- base64[ int (d3 &&& 0b111111uy)]
+        let rest = data.Slice(srcEnd)
+        let strEnd = str.Slice(blocks*4)
+        let slice = 
+            if rest.Length > 0  then
+                let d1 = rest[0]
+                strEnd[0] <- base64[int (d1 >>> 2)]
+                let d1' = (d1 &&& 0b11uy) <<< 4
+                if rest.Length > 1 then 
+                    let d2 = rest[1]
+                    strEnd[1] <- base64[ int (d1' ||| (d2 >>> 4)) ]
+                    strEnd[2] <- base64[int ((d2 &&& 0b1111uy)<<< 2 )]
+                    str.Slice(0,str.Length-1)
+                else
+                    strEnd[1] <- base64[int d1']
+                    str.Slice(0,str.Length-2)
+            else
+                str
+        String(Span.op_Implicit slice)
+
 
 [<Flags>]
 type HasherOptions =
@@ -310,7 +352,7 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
             addExpr e
             let span = buffer.Memory.Span
             let len = h.GetCurrentHash(span)
-            WebEncoders.Base64UrlEncode(Span.op_Implicit (span.Slice(0,min len 15)))
+            Base64.encode(Span.op_Implicit (span.Slice(0,min len 15)))
         | None -> failwithf "No def"
 
     interface IDisposable with

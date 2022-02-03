@@ -19,13 +19,16 @@
     <None Include="..\..\LICENSE.md" Link="docs\LICENSE.md" Pack="true" PackagePath="\" />
     <None Include="..\..\docs\eskv.png" Link="docs\eskv.img" Pack="true" PackagePath="\" />
     <Compile Include="Hashing.fs" />
+    <Compile Include="MultiPartReader.fs" />
     <Compile Include="eskv.fs" />
   </ItemGroup>
 
   <ItemGroup>
-    <FrameworkReference Include="Microsoft.AspNetCore.App" />
-    <PackageReference Update="FSharp.Core" Version="6.0.0" />
+    <PackageReference Include="Microsoft.Extensions.Primitives" Version="6.0.0" />
   </ItemGroup>
-  <ItemGroup />
+
+  <ItemGroup>
+    <PackageReference Update="FSharp.Core" Version="6.0.1" />
+  </ItemGroup>
 
 </Project>

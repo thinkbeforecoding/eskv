@@ -114,7 +114,7 @@ type EskvClient(uri: Uri) =
                     let events = ResizeArray()
                     while not quit do
                         
-                        let! section = reader.ReadNextSectionAsync()
+                        let! section = reader.ReadNextSectionAsync(Threading.CancellationToken.None)
                         
                         if isNull section then
                             quit <- true
@@ -228,7 +228,7 @@ type EskvClient(uri: Uri) =
             else
                 client.DefaultRequestHeaders.IfNoneMatch.Add(Headers.EntityTagHeaderValue.Any)
 
-            let! response = client.PutAsync(Uri(Uri(kv,container),key), new StringContent(value))
+            let! response = client.PutAsync(Uri(kv,container + "/" + key), new StringContent(value))
             
             match response.StatusCode with
             | HttpStatusCode.Conflict ->
