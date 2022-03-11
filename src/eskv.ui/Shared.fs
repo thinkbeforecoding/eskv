@@ -18,4 +18,4 @@ type ServerCmd =
     | ContainerDeleted of Container
     | StreamUpdated of AllStreamData[]
     | StreamLoaded of AllStreamData[]
-    | KeysLoaded of (Container * Key*(string*ETag)) list
+    | KeysLoaded of (Container * (Key*(string*ETag)) list) list

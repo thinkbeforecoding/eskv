@@ -297,14 +297,17 @@ app.MapGet("/ws", fun ctx ->
               sessions.TryAdd(webSocket, obj()) |> ignore
 
               let msg =
-                  data
-                  |> Seq.collect(fun kv -> kv.Value |> Seq.map( fun v -> kv.Key, v.Key, v.Value))
-                  |> Seq.filter (fun (_,_,v) ->  v.Etag.Length <> 0 )
-                  |> Seq.map (fun (container,key,v) -> container,key, (decode v.Bytes v.ContentType, v.Etag))
-                  |> Seq.toList
-                  |> Shared.KeysLoaded
+                    [ for KeyValue(container, keys) in data do
+                        container, 
+                            [ for KeyValue(key, entry) in keys do
+                                if entry.Etag.Length <> 0 then
+                                    key, (decode entry.Bytes entry.ContentType, entry.Etag)
+                            ]
 
-           
+                        
+                    
+                    ]
+                    |> Shared.KeysLoaded
 
               do! send webSocket msg
 

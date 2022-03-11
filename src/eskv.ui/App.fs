@@ -182,10 +182,7 @@ let update (command: Command) (model: Model)  =
        { model with
             Keys = 
                 keys
-                |> List.groupBy (fun (containerKey,_,_) -> containerKey)
-                |> List.map(fun (containerKey, entries) -> 
-                    containerKey, entries |> List.map(fun (_,k,v) -> k,v) |> Map.ofList
-                )
+                |> List.map (fun (container, keys) -> container, Map.ofList keys)
                 |> Map.ofList }, Cmd.none
     | Server (Shared.StreamUpdated stream ) ->
         { model with
