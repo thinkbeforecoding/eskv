@@ -239,7 +239,7 @@ app.MapDelete("/kv/{container}/{key}", fun ctx ->
         | true, container ->
             if etags.Count = 1 then
                 if container.TryUpdate(key,{ Etag = "" ; Bytes = null; ContentType = null },{ Etag = etags.[0]; Bytes = null; ContentType = null }) then
-                    data.TryRemove(key) |> ignore
+                    container.TryRemove(key) |> ignore
                     ctx.Response.StatusCode <- 204
                     do! publish (Shared.KeyDeleted(containerKey, key))
                 else
