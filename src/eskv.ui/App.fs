@@ -142,7 +142,7 @@ let update (command: Command) (model: Model)  =
         | Editing edit ->
             { model with Editing = Editing { edit with Editing.Saving = true}}, Cmd.OfAsync.result (async {
                 let! response = 
-                    fetch $"/kv/{edit.Key}"
+                    fetch $"/kv/{edit.Container}/{edit.Key}"
                         [ requestHeaders [ IfMatch edit.ETag]
                           RequestProperties.Method HttpMethod.PUT
                           RequestProperties.Body (U3.Case3 edit.Value)]
@@ -325,7 +325,7 @@ let view model dispatch =
                             Html.td [ 
                                 Bulma.input.text [
                                     prop.disabled model.Saving
-                                    prop.value model.NewKey
+                                    prop.valueOrDefault model.NewKey
                                     prop.onChange (dispatch << ChangeNewKey)
                                     prop.onKeyDown(fun e -> 
                                         match e.key with
@@ -341,7 +341,7 @@ let view model dispatch =
                             Html.td [ 
                                 Bulma.input.text [
                                     prop.disabled model.Saving
-                                    prop.value model.NewValue
+                                    prop.valueOrDefault model.NewValue
                                     prop.onChange (dispatch << ChangeNewValue)
                                     prop.onKeyDown(fun e -> 
                                         match e.key with
@@ -466,7 +466,7 @@ let view model dispatch =
                                             prop.children [
                                                 Bulma.input.text [
                                                     prop.disabled saving
-                                                    prop.value v
+                                                    prop.valueOrDefault v
                                                     prop.onChange (dispatch << EditChanged)
                                                     prop.onKeyDown(fun e -> 
                                                         match e.key with
