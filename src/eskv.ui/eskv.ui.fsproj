@@ -14,20 +14,20 @@
 
   <ItemGroup>
     <PackageReference Include="Fable.Browser.Css" Version="2.1.0" />
-    <PackageReference Include="Fable.Browser.WebSocket" Version="1.0.5" />
+    <PackageReference Include="Fable.Browser.WebSocket" Version="1.1.0" />
     <PackageReference Include="Fable.Elmish" Version="3.1.0" />
     <PackageReference Include="Fable.Elmish.Browser" Version="3.0.4" />
-    <PackageReference Include="Fable.Elmish.HMR" Version="4.1.0" />
+    <PackageReference Include="Fable.Elmish.HMR" Version="5.2.0" />
     <PackageReference Include="Fable.Elmish.React" Version="3.0.1" />
     <PackageReference Include="Fable.Fetch" Version="2.4.0" />
-    <PackageReference Include="Feliz" Version="1.53.0" />
+    <PackageReference Include="Feliz" Version="1.60.0" />
     <PackageReference Include="Feliz.Bulma" Version="2.18.0" />
     <PackageReference Include="Feliz.Bulma.Tooltip" Version="2.0.0" />
-    <PackageReference Include="Thoth.Json" Version="6.0.0" />
+    <PackageReference Include="Thoth.Json" Version="7.0.0" />
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Update="FSharp.Core" Version="6.0.0" />
+    <PackageReference Update="FSharp.Core" Version="6.0.3" />
   </ItemGroup>
 
 </Project>
