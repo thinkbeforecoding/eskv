@@ -377,11 +377,16 @@ let renderSliceContent includeLink (slice: ReadOnlyMemory<Event>) =
 
     content
 
-let renderSlice (response: HttpResponse) (streamId: string) includeLink start (slice: ReadOnlyMemory<Event>) =
+let renderSlice (response: HttpResponse) (streamId: string) includeLink start (slice: ReadOnlyMemory<Event>) (lengthOfStream: int) =
     task {
         response.Headers.Add("ESKV-Stream", streamId)
         response.Headers.Add("ESKV-Expected-Version", string (start+slice.Length-1))
         response.Headers.Add("ESKV-Next-Event-Number", string (start+slice.Length))
+        response.Headers.Add("ESKV-Stream-Expected-Version", string (lengthOfStream-1))
+        response.Headers.Add("ESKV-Stream-Next-Event-Number", string (lengthOfStream))
+
+        if start+slice.Length = lengthOfStream then
+            response.Headers.Add("ESKV-End-Of-Stream", "true")
         if slice.Length = 0 then
             response.StatusCode <- 204
         else
@@ -462,8 +467,8 @@ app.MapPost("/es/{stream}", fun ctx ->
                 ctx.Response.StatusCode <- 409
                 if returnNewEvents then
                     match! Streams.readStreamAsync streamId (expectedVersion+1) (Int32.MaxValue) with
-                    | ValueSome slice ->
-                        do! renderSlice ctx.Response streamId true (expectedVersion+1) slice
+                    | ValueSome(slice, lengthOfStream) ->
+                        do! renderSlice ctx.Response streamId true (expectedVersion+1) slice lengthOfStream
                     | ValueNone -> ()
                         
 
@@ -483,8 +488,8 @@ app.MapGet("/es/{stream}/{start:int}/{count:int}", fun ctx ->
             not (ctx.Request.Headers.ContainsKey("ESKV-Link-Only"))
 
         match! Streams.readStreamAsync streamId start count with
-        | ValueSome slice ->
-            do! renderSlice ctx.Response streamId includeLink start slice
+        | ValueSome (slice, lengthOfStream) ->
+            do! renderSlice ctx.Response streamId includeLink start slice lengthOfStream
             
         | ValueNone ->
             ctx.Response.StatusCode <- 404

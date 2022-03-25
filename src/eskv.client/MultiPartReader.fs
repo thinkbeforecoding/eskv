@@ -814,7 +814,7 @@ type MultipartSection() =
 /// <summary>
 /// Reads multipart form content from the specified <see cref="Stream"/>.
 /// </summary>
-type  MultipartReader(boundary: string, stream: Stream, bufferSize: int) as self =
+type  MultipartReader(boundary: string, stream: Stream, bufferSize: int) =
     do
         if isNull stream then
             raise (ArgumentNullException("stream"))

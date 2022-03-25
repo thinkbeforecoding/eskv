@@ -5,8 +5,10 @@ open System
 open System.Net.Http
 
 open System.Net
+open System.Threading
 open System.Threading.Tasks
 open System.Linq
+open System.Collections.Generic
 
 /// Contains result information for a <see cref="EskvClient.TryLoad"/> operation.
 type LoadResult =
@@ -41,7 +43,8 @@ type Slice =
     { State: StreamState
       Events: EventRecord[]
       ExpectedVersion: int
-      NextEventNumber: int }
+      NextEventNumber: int
+      EndOfStream: bool }
 
 /// A slice of stream list returned by <see cref="EskvClient.GetStreams"/>.
 type StreamsSlice =
@@ -63,6 +66,12 @@ type AppendOrReadResult =
       ExpectedVersion: int 
       NextEventNumber: int }
 
+type StreamResult =
+    { State: StreamState
+      Events: IAsyncEnumerable<EventRecord>
+      ExpectedVersion: int
+      NextEventNumber: int }
+
 module private Http =
 
     let (|Success|Failure|) (statusCode: HttpStatusCode) =
@@ -81,6 +90,8 @@ module EventNumber =
 
 module EventCount =
     let [<Literal>] All = Int32.MaxValue
+
+
 
 /// <summary>Creates a new instance of <see cref="EskvClient" /> to use
 /// eskv in-memory key/value and event store.</summary>
@@ -157,6 +168,87 @@ type EskvClient(uri: Uri) =
 
                     return events.ToArray()
         }
+
+    let readStreamForwardAsync stream start count linkOnly = 
+        task {
+            use client = new HttpClient()
+
+            let request = new HttpRequestMessage(HttpMethod.Get, Uri(es,$"%s{stream}/%d{start}/%d{count}"))
+            if linkOnly then
+                request.Headers.Add("ESKV-Link-Only","")
+            let! response = client.SendAsync(request)
+            if response.IsSuccessStatusCode then
+                let nextExpectedVersion = response.Headers.GetValues("ESKV-Expected-Version").First() |> int
+                let nextEventNumber = response.Headers.GetValues("ESKV-Next-Event-Number").First() |> int
+                let endOfStream =
+                    match response.Headers.TryGetValues("ESKV-End-Of-Stream") with
+                    | true, values -> values |> Seq.map Boolean.Parse |> Seq.head
+                    | false, _ -> false
+                let! events = readEvents response
+                return { State = StreamState.StreamExists
+                         Events = events
+                         ExpectedVersion = nextExpectedVersion
+                         NextEventNumber = nextEventNumber
+                         EndOfStream = endOfStream
+                         }
+            elif response.StatusCode = HttpStatusCode.NotFound then 
+                return { State = StreamState.NoStream
+                         Events = [||]
+                         ExpectedVersion = -1
+                         NextEventNumber = 0
+                         EndOfStream = true }
+            else
+                return failwithf "%s" response.ReasonPhrase
+        }
+
+    let getStreamAsync eskv stream start linkOnly = 
+            task {
+                use client = new HttpClient()
+
+                let request = new HttpRequestMessage(HttpMethod.Get, Uri(es,$"%s{stream}/%d{start}/100"))
+                if linkOnly then
+                    request.Headers.Add("ESKV-Link-Only","")
+                let! response = client.SendAsync(request)
+                if response.IsSuccessStatusCode then
+                    let nextExpectedVersion = response.Headers.GetValues("ESKV-Expected-Version").First() |> int
+                    let nextEventNumber = response.Headers.GetValues("ESKV-Next-Event-Number").First() |> int
+                    let nextStreamExpectedVersion = response.Headers.GetValues("ESKV-Stream-Expected-Version").First() |> int
+                    let nextStreamEventNumber = response.Headers.GetValues("ESKV-Stream-Next-Event-Number").First() |> int
+                    let endOfStream =
+                        match response.Headers.TryGetValues("ESKV-End-Of-Stream") with
+                        | true, values ->  values |> Seq.map Boolean.Parse |> Seq.head
+                        | false, _ -> false
+                    let! events = readEvents response
+                    let slice = 
+                        { Slice.State = StreamState.StreamExists 
+                          Slice.Events = events
+                          Slice.ExpectedVersion = nextExpectedVersion
+                          Slice.NextEventNumber = nextEventNumber
+                          Slice.EndOfStream = endOfStream
+                        }
+                    return { State = slice.State
+                             Events = new SliceEnumerable(eskv, stream, linkOnly, slice  )
+                             ExpectedVersion = nextStreamExpectedVersion
+                             NextEventNumber = nextStreamEventNumber
+                             }
+                elif response.StatusCode = HttpStatusCode.NotFound then 
+                    return { State = StreamState.NoStream
+                             Events = { new IAsyncEnumerable<EventRecord> with
+                                            member _.GetAsyncEnumerator(_) =
+                                                { new IAsyncEnumerator<EventRecord> with
+                                                        member _.MoveNextAsync() = ValueTask.FromResult(false)
+                                                        member _.Current = failwith "The collection is empty"
+                                                        member _.DisposeAsync() = ValueTask.CompletedTask
+                                                }
+                             }
+                             ExpectedVersion = -1
+                             NextEventNumber = 0
+                              }
+                else
+                    return failwithf "%s" response.ReasonPhrase
+            }
+
+
 
 
     /// <summary>Creates a new instance of <see cref="EskvClient" /> to use
@@ -539,33 +631,41 @@ type EskvClient(uri: Uri) =
     /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
     /// to return all events.</param>
     /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <param name="startExcluded">Returns events starting after start position</param>
     /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
     /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
-    member _.ReadStreamForwardAsync(stream: string, start: int, count: int, linkOnly: bool) =
-        task {
-            use client = new HttpClient()
-
-            let request = new HttpRequestMessage(HttpMethod.Get, Uri(es,$"{stream}/{start}/{count}"))
-            if linkOnly then
-                request.Headers.Add("ESKV-Link-Only","")
-            let! response = client.SendAsync(request)
-            if response.IsSuccessStatusCode then
-                let nextExpectedVersion = response.Headers.GetValues("ESKV-Expected-Version").First() |> int
-                let nextEventNumber = response.Headers.GetValues("ESKV-Next-Event-Number").First() |> int
-                let! events = readEvents response
-                return { State = StreamState.StreamExists
-                         Events = events
-                         ExpectedVersion = nextExpectedVersion
-                         NextEventNumber = nextEventNumber
-                         }
-            elif response.StatusCode = HttpStatusCode.NotFound then 
-                return { State = StreamState.NoStream
-                         Events = [||]
-                         ExpectedVersion = -1
-                         NextEventNumber = 0 }
+    member _.ReadStreamForwardAsync(stream: string, start: int, count: int, linkOnly: bool, startExcluded: bool) =
+        let start =
+            if startExcluded then
+                start+1
             else
-                return failwithf "%s" response.ReasonPhrase
-        }
+                start
+        readStreamForwardAsync stream start count linkOnly
+
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamForward(stream: string, start: int, count: int, linkOnly: bool, startExcluded: bool) =
+        this.ReadStreamForwardAsync(stream,start,count, linkOnly, startExcluded).Result
+
+            /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamForwardAsync(stream: string, start: int, count: int, linkOnly: bool) =
+        this.ReadStreamForwardAsync(stream,start,count, linkOnly, false)
+
 
     /// <summary>Read events from stream starting from specified event number.</summary>
     /// <param name="stream">The name of the stream.</param>
@@ -590,6 +690,9 @@ type EskvClient(uri: Uri) =
     member this.ReadStreamForwardAsync(stream: string, start: int, count: int) =
         this.ReadStreamForwardAsync(stream,start,count, false)
 
+
+
+
     /// <summary>Read events from stream starting from specified event number.</summary>
     /// <param name="stream">The name of the stream.</param>
     /// <param name="start">The number of the first event included. Use
@@ -600,6 +703,131 @@ type EskvClient(uri: Uri) =
     /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
     member this.ReadStreamForward(stream: string, start: int, count: int) =
         this.ReadStreamForwardAsync(stream,start,count).Result
+
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamForwardAsync(stream: string, start: int) =
+        this.ReadStreamForwardAsync(stream,start,Int32.MaxValue)
+
+
+
+
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" /> to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref=""EventCount.All""/>
+    /// to return all events.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamForward(stream: string, start: int) =
+        this.ReadStreamForwardAsync(stream,start).Result
+
+    
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamSinceAsync(stream: string, start: int, count: int, linkOnly: bool) =
+        this.ReadStreamForwardAsync(stream, start, count, linkOnly, true)
+        
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamSince(stream: string, start: int, count: int, linkOnly: bool) =
+        this.ReadStreamSinceAsync(stream, start, count, linkOnly).Result
+
+
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamSinceAsync(stream: string, start: int, count: int) =
+        this.ReadStreamForwardAsync(stream, start, count, false)
+        
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamSince(stream: string, start: int, count: int) =
+        this.ReadStreamSinceAsync(stream, start, count).Result
+
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamSinceAsync(stream: string, start: int) =
+        this.ReadStreamForwardAsync(stream, start, Int32.MaxValue, false)
+        
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.ReadStreamSince(stream: string, start: int) =
+        this.ReadStreamSinceAsync(stream, start).Result
+
+
+    /// <summary>Read events from stream starting from specified event number.</summary>
+    /// <param name="stream">The name of the stream.</param>
+    /// <param name="start">The number of the first event included. Use
+    /// <see cref="EventNumber.Start" />  to start from the begining.</param>
+    /// <param name="count">The number of events to return. Use <see cref="EventCount.All"/>
+    /// to return all events.</param>
+    /// <param name="linkOnly">Return only link information without original event data for links.</param>
+    /// <param name="startExcluded">Returns events starting after start position</param>
+    /// <returns>Returns a <see cref="Slice"/> that contains events, the state of the stream, 
+    /// the version to expect on next <see cref="TryAppend"/> operation, and the next event number.</returns>
+    member this.GetStreamAsync(stream: string, start: int, linkOnly: bool, startExcluded: bool) =
+        let start =
+            if startExcluded then
+                start+1
+            else
+                start
+        getStreamAsync this stream start linkOnly
+        
+
+
+        
+        
+
+
 
     /// <summary>Gets the list of the stream names in creation order, starting from specified one.</summary>
     /// <param name="start">The number of the first stream included. Use
@@ -629,3 +857,48 @@ type EskvClient(uri: Uri) =
     /// the last stream number, and the next stream number.</returns>
     member this.GetStreams(start: int, count: int) =
         this.GetStreamsAsync(start, count).Result
+
+and SliceEnumerable(client, stream, linkOnly, slice) =
+    interface IAsyncEnumerable<EventRecord> with
+        member _.GetAsyncEnumerator(cancellationToken: CancellationToken) =
+            new SliceEnumerator(client, stream, linkOnly, slice, cancellationToken)
+
+
+and SliceEnumerator(client: EskvClient, stream, linkOnly, slice, cancellationToken: CancellationToken) =
+    let mutable slice = slice
+    let mutable pos = -1
+    let mutable ended = false
+
+
+    interface IAsyncEnumerator<EventRecord> with
+        member _.MoveNextAsync() =
+            task {
+            cancellationToken.ThrowIfCancellationRequested()
+            if pos >= slice.Events.Length-1 then
+                if slice.EndOfStream then
+                    ended <- true
+                    return false
+                else
+                    let! s = client.ReadStreamForwardAsync(stream, slice.NextEventNumber, 100, linkOnly)
+                    slice <- s
+
+                    pos <- 0
+                    return s.Events.Length <> 0
+            else
+                pos <- pos+1
+                return true
+            } |> ValueTask<bool>
+
+        member _.Current = 
+            if not ended then
+                slice.Events[pos]
+            else
+                failwith "Stream is already terminated"
+
+        member _.DisposeAsync() =  ValueTask.CompletedTask
+           
+
+
+
+
+
