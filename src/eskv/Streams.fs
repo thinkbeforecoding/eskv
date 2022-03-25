@@ -30,6 +30,7 @@ type AppendList<'t>() =
             items.AsMemory(start, min count (length-start))  |> Memory.op_Implicit
 
 
+
 type EventData =
     { Type: string 
       Data: byte[]
@@ -57,7 +58,7 @@ type Stream =
 
 type Action =
     | Append of streamId: string * EventData[] * expectedVersion:int * reply:((int * EventRecord[]) ValueOption -> unit)
-    | ReadStream of streamId: string  * start: int * count: int * reply:(ValueOption<Event ReadOnlyMemory> -> unit)
+    | ReadStream of streamId: string  * start: int * count: int * reply:(ValueOption<Event ReadOnlyMemory * int> -> unit)
     | ReadAll of start: int * count: int * reply:(EventRecord ReadOnlyMemory -> unit)
     
     
@@ -102,7 +103,10 @@ let streams =
                 match streams.TryGetValue(streamId) with
                 | false,_ -> reply(ValueNone)
                 | true, stream ->
-                    stream.Events.GetRange(start, count) |> ValueSome |> reply
+                    
+                    let mem = stream.Events.GetRange(start, count) 
+                    let length = stream.Events.Count
+                    ValueSome(mem, length) |> reply
             | ReadAll(start, count, reply) ->
                   all.GetRange(start, count) |> reply
 

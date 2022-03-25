@@ -41,6 +41,7 @@
     <PackageReference Include="Argu" Version="6.1.1" />
     <PackageReference Include="Thoth.Json.Net" Version="8.0.0" />
     <PackageReference Update="FSharp.Core" Version="6.0.3" />
+    <PackageReference Update="Nerdbank.GitVersioning" Version="3.4.255" />
   </ItemGroup>
   <ItemGroup>
     <Folder Include="wwwroot\content\" />
