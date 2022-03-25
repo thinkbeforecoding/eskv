@@ -16,8 +16,8 @@
     "style.css": "^1.0.0"
   },
   "devDependencies": {
-    "@parcel/transformer-sass": "^2.0.0-rc.0",
-    "parcel": "^2.0.0-rc.0",
+    "@parcel/transformer-sass": "^2.4.0",
+    "parcel": "^2.4.0",
     "sass": "^1.42.1"
   }
 }
