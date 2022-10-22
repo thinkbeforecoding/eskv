@@ -9,6 +9,7 @@ open System.Threading
 open System.Threading.Tasks
 open System.Linq
 open System.Collections.Generic
+open HttpMultipartParser
 
 /// Contains result information for a <see cref="EskvClient.TryLoad"/> operation.
 type LoadResult =
@@ -80,6 +81,17 @@ module private Http =
         else
             Failure
 
+module HttpMultipartParser =
+    type FilePart with
+        member part.TryGetHeader(header) =
+            if part.AdditionalProperties.ContainsKey(header) then
+                Some part.AdditionalProperties[header]
+            else
+                None
+
+open HttpMultipartParser
+
+
 module ExpectedVersion =
     let [<Literal>] Start = 0
     let [<Literal>] NoStream = -1
@@ -118,53 +130,45 @@ type EskvClient(uri: Uri) =
                     let streamId = response.Headers.GetValues("ESKV-Stream").First()
 
                     use! stream = response.Content.ReadAsStreamAsync()
-                    let reader = Microsoft.AspNetCore.WebUtilities.MultipartReader(boundary, stream)
+                    let! reader = MultipartFormDataParser.ParseAsync(stream)
                     
 
-                    let mutable quit = false
                     let events = ResizeArray()
-                    while not quit do
+                    for section in reader.Files do
                         
-                        let! section = reader.ReadNextSectionAsync(Threading.CancellationToken.None)
-                        
-                        if isNull section then
-                            quit <- true
-                        else
                              
                             let! eventType, data = 
                                 task {
-                                match section.Headers.TryGetValue("ESKV-Event-Type") with
-                                | true, eth -> 
+                                match section.TryGetHeader("eskv-event-type") with
+                                | Some eth -> 
                                     let eventType = eth.ToString()
 
 
                                     return!
                                         task {
-                                            use streamReader = new IO.StreamReader(section.Body)
+                                            use streamReader = new IO.StreamReader(section.Data)
                                             let! data = streamReader.ReadToEndAsync()
                                             return eventType, data 
                                         }
                                     
-                                | false, _ ->
+                                | None ->
                                     return "$>", null
                                 }
-                            let eventNumber = section.Headers.["ESKV-Event-Number"].ToString() |> int
+                            let eventNumber = section.AdditionalProperties["eskv-event-number"].ToString() |> int
                             let originEventNumber = 
-                                match section.Headers.TryGetValue("ESKV-Origin-Event-Number") with
-                                | true, h -> h.ToString() |> int
-                                | false, _ -> eventNumber
+                                match section.TryGetHeader("eskv-origin-event-number") with
+                                | Some h -> h.ToString() |> int
+                                | None -> eventNumber
                             let originStream =
-                                match section.Headers.TryGetValue("ESKV-Origin-Stream") with
-                                | true, h -> h.ToString()
-                                | false, _ -> streamId
+                                match section.TryGetHeader("eskv-origin-stream") with
+                                | Some h -> h.ToString()
+                                | None -> streamId
                             events.Add({EventType = eventType
                                         EventNumber = eventNumber
                                         Data = data
                                         OriginEventNumber = originEventNumber
                                         OriginStream = originStream
                                         })
-                                
-                            
 
                     return events.ToArray()
         }
