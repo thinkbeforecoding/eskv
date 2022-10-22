@@ -19,17 +19,12 @@
     <None Include="..\..\LICENSE.md" Link="docs\LICENSE.md" Pack="true" PackagePath="\" />
     <None Include="..\..\docs\eskv.png" Link="docs\eskv.img" Pack="true" PackagePath="\" />
     <Compile Include="Hashing.fs" />
-    <Compile Include="MultiPartReader.fs" />
     <Compile Include="eskv.fs" />
   </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="Microsoft.Extensions.Primitives" Version="6.0.0" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <PackageReference Update="FSharp.Core" Version="6.0.3" />
-    <PackageReference Update="Nerdbank.GitVersioning" Version="3.4.255" />
+    <PackageReference Include="HttpMultipartParser" Version="7.0.0"/>
   </ItemGroup>
 
 </Project>
