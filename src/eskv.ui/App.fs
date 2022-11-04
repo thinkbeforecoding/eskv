@@ -103,7 +103,7 @@ let update (command: Command) (model: Model) =
             Saving = false },
         Cmd.none
 
-    | DeleteKey (container, key, etag) ->
+    | DeleteKey(container, key, etag) ->
         { model with Saving = true },
         Cmd.OfAsync.result (
             async {
@@ -116,7 +116,7 @@ let update (command: Command) (model: Model) =
                 return Saved
             }
         )
-    | DeleteContainer (container) ->
+    | DeleteContainer(container) ->
         { model with Saving = true },
         Cmd.OfAsync.result (
             async {
@@ -155,7 +155,7 @@ let update (command: Command) (model: Model) =
         | _ -> model, Cmd.none
     | EditSaved -> { model with Editing = NoEdit }, Cmd.none
     | ChangeEventView view -> { model with EventView = view }, Cmd.none
-    | Server (Shared.KeyChanged (containerKey, key, value)) ->
+    | Server(Shared.KeyChanged(containerKey, key, value)) ->
         { model with
             Keys =
                 let container = Map.tryFind containerKey model.Keys |> Option.defaultValue Map.empty
@@ -164,7 +164,7 @@ let update (command: Command) (model: Model) =
 
          },
         Cmd.none
-    | Server (Shared.KeyDeleted (containerKey, key)) ->
+    | Server(Shared.KeyDeleted(containerKey, key)) ->
         { model with
             Keys =
                 model.Keys
@@ -172,22 +172,22 @@ let update (command: Command) (model: Model) =
                     | None -> None
                     | Some container -> Some(Map.remove key container)) },
         Cmd.none
-    | Server (Shared.ContainerDeleted containerKey) ->
+    | Server(Shared.ContainerDeleted containerKey) ->
         { model with Keys = model.Keys |> Map.remove containerKey }, Cmd.none
-    | Server (Shared.KeysLoaded keys) ->
+    | Server(Shared.KeysLoaded keys) ->
         { model with
             Keys =
                 keys
                 |> List.map (fun (container, keys) -> container, Map.ofList keys)
                 |> Map.ofList },
         Cmd.none
-    | Server (Shared.StreamUpdated stream) ->
+    | Server(Shared.StreamUpdated stream) ->
         { model with
             Events =
                 model.Events
                 @ [ for e in stream -> e.StreamId, e.EventNumber, e.EventType, e.EventData ] },
         Cmd.none
-    | Server (Shared.StreamLoaded events) ->
+    | Server(Shared.StreamLoaded events) ->
         { model with
             Events =
                 events

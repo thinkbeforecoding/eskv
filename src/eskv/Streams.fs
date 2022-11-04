@@ -94,7 +94,7 @@ let streams =
         let rec loop () =
             async {
                 match! mailbox.Receive() with
-                | Append (streamId, events, expectedVersion, reply) ->
+                | Append(streamId, events, expectedVersion, reply) ->
                     let stream = getStream streamId
 
 
@@ -109,14 +109,17 @@ let streams =
                                   Event = e })
 
                         stream.Events.AddRange(Array.map Record records)
-                        
+
                         let firstAll = all.Count
-                        let allLinks = 
+
+                        let allLinks =
                             records
                             |> Array.mapi (fun i r ->
-                                Link { StreamId = "$all"
-                                       EventNumber = firstAll + i
-                                       OriginEvent = r })
+                                Link
+                                    { StreamId = "$all"
+                                      EventNumber = firstAll + i
+                                      OriginEvent = r })
+
                         all.AddRange(allLinks)
 
                         if first = 0 && records.Length > 0 then
@@ -134,7 +137,7 @@ let streams =
 
                     else
                         reply (ValueNone)
-                | ReadStream (streamId, start, count, reply) ->
+                | ReadStream(streamId, start, count, reply) ->
                     match streams.TryGetValue(streamId) with
                     | false, _ -> reply (ValueNone)
                     | true, stream ->
@@ -142,7 +145,7 @@ let streams =
                         let mem = stream.Events.GetRange(start, count)
                         let length = stream.Events.Count
                         ValueSome(mem, length) |> reply
-                | ReadAll (start, count, reply) -> all.GetRange(start, count) |> reply
+                | ReadAll(start, count, reply) -> all.GetRange(start, count) |> reply
 
 
                 return! loop ()

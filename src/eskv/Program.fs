@@ -72,7 +72,7 @@ let publish msg =
     task {
         let payload = Encode.Auto.toString (0, msg) |> Text.Encoding.UTF8.GetBytes
 
-        for KeyValue (ws, _) in sessions do
+        for KeyValue(ws, _) in sessions do
             do! ws.SendAsync(payload.AsMemory(), WebSocketMessageType.Text, true, cts.Token)
     }
 
@@ -109,11 +109,12 @@ let writeEvent (ws: WebSocket) (e: Event) =
 
 let publishEvent (e: Event) =
     task {
-        let streamId = 
+        let streamId =
             match e with
             | Record r -> r.StreamId
-            | Link l -> l.StreamId 
-        for KeyValue (ws, stream) in subscriptions do
+            | Link l -> l.StreamId
+
+        for KeyValue(ws, stream) in subscriptions do
             if stream = streamId then
                 try
                     do! writeEvent ws e
@@ -417,9 +418,9 @@ app.MapGet(
                 sessions.TryAdd(webSocket, obj ()) |> ignore
 
                 let msg =
-                    [ for KeyValue (container, keys) in data do
+                    [ for KeyValue(container, keys) in data do
                           container,
-                          [ for KeyValue (key, entry) in keys do
+                          [ for KeyValue(key, entry) in keys do
                                 if entry.Etag.Length <> 0 then
                                     key, (decode entry.Bytes entry.ContentType, entry.Etag) ]
 
@@ -439,10 +440,10 @@ app.MapGet(
                     for i in 0 .. s.Length - 1 do
                         let event = s.[i]
 
-                        data.[i] <- 
+                        data.[i] <-
                             match event with
                             | Link e ->
-                                { StreamId = e.OriginEvent .StreamId
+                                { StreamId = e.OriginEvent.StreamId
                                   EventNumber = e.OriginEvent.EventNumber
                                   EventType = e.OriginEvent.Event.Type
                                   EventData = decode e.OriginEvent.Event.Data e.OriginEvent.Event.ContentType }
@@ -452,7 +453,7 @@ app.MapGet(
                                   EventType = r.Event.Type
                                   EventData = decode r.Event.Data r.Event.ContentType }
 
-                                
+
 
                     data
 
@@ -607,7 +608,7 @@ app.MapPost(
                 let! nextExpectedVersion = Streams.appendAsync streamId (events.ToArray()) expectedVersion
 
                 match nextExpectedVersion with
-                | ValueSome (nextExpectedVersion, records, allEvents) ->
+                | ValueSome(nextExpectedVersion, records, allEvents) ->
 
 
 
@@ -639,7 +640,7 @@ app.MapPost(
 
                     if returnNewEvents then
                         match! Streams.readStreamAsync streamId (expectedVersion + 1) (Int32.MaxValue) with
-                        | ValueSome (slice, lengthOfStream) ->
+                        | ValueSome(slice, lengthOfStream) ->
                             do! renderSlice ctx.Response streamId true (expectedVersion + 1) slice lengthOfStream
                         | ValueNone -> ()
 
@@ -664,7 +665,7 @@ app.MapGet(
 
             if streamId <> "$all" then
                 match! Streams.readStreamAsync streamId start count with
-                | ValueSome (slice, lengthOfStream) ->
+                | ValueSome(slice, lengthOfStream) ->
                     do! renderSlice ctx.Response streamId includeLink start slice lengthOfStream
 
                 | ValueNone -> ctx.Response.StatusCode <- 404
@@ -692,18 +693,18 @@ app.MapGet(
 
                 subscriptions.TryAdd(webSocket, streamId) |> ignore
 
-                let! slice = 
+                let! slice =
                     task {
                         if streamId = "$all" then
                             let! slice = Streams.readAllAsync start Int32.MaxValue
-                            return ValueSome (slice, slice.Length)
+                            return ValueSome(slice, slice.Length)
                         else
                             return! Streams.readStreamAsync streamId 0 Int32.MaxValue
-                     }
+                    }
 
 
                 match slice with
-                | ValueSome (events, lengthOfStream) ->
+                | ValueSome(events, lengthOfStream) ->
 
                     for i in 0 .. events.Length - 1 do
 
@@ -711,7 +712,7 @@ app.MapGet(
 
                         do! writeEvent webSocket e
 
-                | ValueNone ->  ()
+                | ValueNone -> ()
 
                 let buffer = MemoryPool<byte>.Shared.Rent (4096)
                 let mutable closed = false
@@ -725,7 +726,7 @@ app.MapGet(
                         subscriptions.TryRemove(webSocket) |> ignore
                         closed <- true
 
-                    
+
             else
                 ctx.Response.StatusCode <- 400
         }

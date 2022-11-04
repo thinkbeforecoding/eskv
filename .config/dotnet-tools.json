@@ -3,25 +3,25 @@
   "isRoot": true,
   "tools": {
     "fable": {
-      "version": "3.7.5",
+      "version": "3.7.20",
       "commands": [
         "fable"
       ]
     },
     "femto": {
-      "version": "0.12.0",
+      "version": "0.16.0",
       "commands": [
         "femto"
       ]
     },
     "nbgv": {
-      "version": "3.4.255",
+      "version": "3.5.119",
       "commands": [
         "nbgv"
       ]
     },
     "fantomas": {
-      "version": "5.0.6",
+      "version": "5.1.0",
       "commands": [
         "fantomas"
       ]

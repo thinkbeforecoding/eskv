@@ -160,12 +160,12 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
 
         let rec addExpr =
             function
-            | Patterns.Lambda (v, c) ->
+            | Patterns.Lambda(v, c) ->
                 this.Add "Lambda"
                 this.AddVar v
                 addExpr c
 
-            | Patterns.Call (t, m, args) ->
+            | Patterns.Call(t, m, args) ->
 
                 this.Add "Call"
                 addTarget t
@@ -174,22 +174,22 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
             | Patterns.Var v ->
                 this.Add "Var"
                 this.AddVar v
-            | Patterns.Value (o, t) ->
+            | Patterns.Value(o, t) ->
                 this.Add "Value"
                 this.AddValue o
                 this.AddType t
             | Patterns.AddressOf x ->
                 this.Add "AddressOf"
                 addExpr x
-            | Patterns.AddressSet (x, v) ->
+            | Patterns.AddressSet(x, v) ->
                 this.Add "AddressSet"
                 addExpr x
                 addExpr v
-            | Patterns.Application (x, v) ->
+            | Patterns.Application(x, v) ->
                 this.Add "Application"
                 addExpr x
                 addExpr v
-            | Patterns.CallWithWitnesses (t, m, m2, args, args2) ->
+            | Patterns.CallWithWitnesses(t, m, m2, args, args2) ->
 
                 this.Add "CallWithWitnesses"
                 addTarget t
@@ -197,42 +197,42 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
                 addMethodOrDef m2
                 addExprs args
                 addExprs args2
-            | Patterns.Coerce (e, t) ->
+            | Patterns.Coerce(e, t) ->
                 this.Add "Coerce"
                 addExpr e
                 this.AddType t
-            | Patterns.DefaultValue (t) ->
+            | Patterns.DefaultValue(t) ->
                 this.Add "DefaultValue"
                 this.AddType t
-            | Patterns.FieldGet (t, f) ->
+            | Patterns.FieldGet(t, f) ->
                 this.Add "FieldGet"
                 addTarget t
                 this.Add f.Name
                 this.AddType f.FieldType
-            | Patterns.FieldSet (t, f, e) ->
+            | Patterns.FieldSet(t, f, e) ->
                 this.Add "FieldSet"
                 addTarget t
                 this.Add f.Name
                 this.AddType f.FieldType
                 addExpr e
 
-            | Patterns.ForIntegerRangeLoop (v, es, ei, ee) ->
+            | Patterns.ForIntegerRangeLoop(v, es, ei, ee) ->
                 this.Add "ForIntegerRangeLoop"
                 this.AddVar v
                 addExpr es
                 addExpr ei
                 addExpr ee
-            | Patterns.IfThenElse (c, t, f) ->
+            | Patterns.IfThenElse(c, t, f) ->
                 this.Add "IfThenElse"
                 addExpr c
                 addExpr t
                 addExpr f
-            | Patterns.Let (v, e, body) ->
+            | Patterns.Let(v, e, body) ->
                 this.Add "Let"
                 this.AddVar v
                 addExpr e
                 addExpr body
-            | Patterns.LetRecursive (defs, body) ->
+            | Patterns.LetRecursive(defs, body) ->
 
                 this.Add "LetRecursive"
                 addExpr body
@@ -241,12 +241,12 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
                     this.AddVar v
                     addExpr e
 
-            | Patterns.NewArray (t, xs) ->
+            | Patterns.NewArray(t, xs) ->
                 this.Add "NewArray"
                 this.AddType t
                 addExprs xs
 
-            | Patterns.NewDelegate (t, vs, e) ->
+            | Patterns.NewDelegate(t, vs, e) ->
                 this.Add "NewDelegate"
                 this.AddType t
 
@@ -255,36 +255,36 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
 
                 addExpr e
 
-            | Patterns.NewObject (c, args) ->
+            | Patterns.NewObject(c, args) ->
                 this.Add "NewObject"
                 this.AddCtor c
                 addExprs args
 
-            | Patterns.NewRecord (t, args) ->
+            | Patterns.NewRecord(t, args) ->
                 this.Add "NewRecord"
                 this.AddType t
                 addExprs args
 
-            | Patterns.NewStructTuple (args) ->
+            | Patterns.NewStructTuple(args) ->
                 this.Add "NewStructTuple"
                 addExprs args
-            | Patterns.NewTuple (args) ->
+            | Patterns.NewTuple(args) ->
                 this.Add "NewTuple"
                 addExprs args
-            | Patterns.NewUnionCase (c, args) ->
+            | Patterns.NewUnionCase(c, args) ->
                 this.Add "NewUnionCase"
                 this.AddType c.DeclaringType
                 this.Add c.Name
                 this.Add c.Tag
                 addExprs args
 
-            | Patterns.PropertyGet (t, p, args) ->
+            | Patterns.PropertyGet(t, p, args) ->
                 this.Add "PropertyGet"
                 addTarget t
                 this.AddMethod p.GetMethod
                 addExprs args
 
-            | Patterns.PropertySet (t, p, args, e) ->
+            | Patterns.PropertySet(t, p, args, e) ->
                 this.Add "PropertySet"
                 addTarget t
                 this.AddMethod p.GetMethod
@@ -298,51 +298,51 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
                 this.Add "QuoteTyped"
                 addExpr e
 
-            | Patterns.Sequential (e1, e2) ->
+            | Patterns.Sequential(e1, e2) ->
                 this.Add "Sequential"
                 addExpr e1
                 addExpr e2
 
-            | Patterns.TryFinally (body, fclause) ->
+            | Patterns.TryFinally(body, fclause) ->
                 this.Add "TryFinally"
                 addExpr body
                 addExpr fclause
 
-            | Patterns.TryWith (body, v, wclause, v2, wclause2) ->
+            | Patterns.TryWith(body, v, wclause, v2, wclause2) ->
                 this.Add "TryWith"
                 addExpr body
                 this.AddVar v
                 addExpr wclause
                 this.AddVar v2
                 addExpr wclause2
-            | Patterns.TupleGet (e, i) ->
+            | Patterns.TupleGet(e, i) ->
                 this.Add "TupleGet"
                 addExpr e
                 this.Add i
-            | Patterns.TypeTest (e, t) ->
+            | Patterns.TypeTest(e, t) ->
                 this.Add "TypeTest"
                 addExpr e
                 this.AddType t
-            | Patterns.UnionCaseTest (e, c) ->
+            | Patterns.UnionCaseTest(e, c) ->
                 this.Add "UnionCaseTest"
                 addExpr e
                 this.AddType c.DeclaringType
                 this.Add c.Name
                 this.Add c.Tag
-            | Patterns.ValueWithName (v, t, n) ->
+            | Patterns.ValueWithName(v, t, n) ->
                 this.Add "ValueWithName"
                 this.AddValue v
                 this.AddType t
                 this.Add n
-            | Patterns.VarSet (v, e) ->
+            | Patterns.VarSet(v, e) ->
                 this.Add "VarSet"
                 this.AddVar v
                 addExpr e
-            | Patterns.WhileLoop (body, cond) ->
+            | Patterns.WhileLoop(body, cond) ->
                 this.Add "WhileLoop"
                 addExpr body
                 addExpr cond
-            | Patterns.WithValue (v, t, e) ->
+            | Patterns.WithValue(v, t, e) ->
                 this.Add "WithValue"
                 this.AddValue v
                 this.AddType t
@@ -390,8 +390,8 @@ type Hasher(h: IncrementalHash, options: HasherOptions) =
 
         let rec findCall =
             function
-            | Call (None, m, _) -> m
-            | Lambda (_, body) -> findCall body
+            | Call(None, m, _) -> m
+            | Lambda(_, body) -> findCall body
             | expr -> failwithf "Unsupported expression %A. Pass a function" expr
 
         let m = findCall x

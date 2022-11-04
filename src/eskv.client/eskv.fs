@@ -1025,7 +1025,11 @@ type EskvClient(uri: Uri) =
                                   EventType = eventType
                                   EventNumber = eventNumber
                                   Stream = stream
-                                  OriginEventNumber =  if isNull originStream then eventNumber else originEventNumber
+                                  OriginEventNumber =
+                                    if isNull originStream then
+                                        eventNumber
+                                    else
+                                        originEventNumber
                                   OriginStream = if isNull originStream then stream else originStream }
 
                             try
@@ -1033,7 +1037,7 @@ type EskvClient(uri: Uri) =
                             with ex ->
                                 printfn "%O" ex
                     with
-                    | :? TaskCanceledException  -> ()
+                    | :? TaskCanceledException -> ()
                     | ex ->
 
                         printfn "%O" ex
@@ -1041,27 +1045,26 @@ type EskvClient(uri: Uri) =
                 :> Task)
             |> ignore
 
-        } :> Task
+        }
+        :> Task
 
-    member this.Subscribe
-        (
-            stream: string,
-            start: int,
-            handler: EventRecord -> unit
-        ) =
+    member this.Subscribe(stream: string, start: int, handler: EventRecord -> unit) =
         let cts = new CancellationTokenSource()
-        this.SubscribeAsync(stream, start, (fun e -> Task.FromResult(handler e)), cts.Token).Wait()
+
+        this
+            .SubscribeAsync(stream, start, (fun e -> Task.FromResult(handler e)), cts.Token)
+            .Wait()
+
         { new IDisposable with
-            member _.Dispose() = 
+            member _.Dispose() =
                 cts.Cancel()
-                cts.Dispose()}
+                cts.Dispose() }
 
 
     member this.SubscribeAllAsync(start, handler, cancellationToken) =
         this.SubscribeAsync("$all", start, handler, cancellationToken)
 
-    member this.SubscribeAll(start, handler) =
-        this.Subscribe("$all", start, handler)
+    member this.SubscribeAll(start, handler) = this.Subscribe("$all", start, handler)
 
 and SliceEnumerable(client, stream, linkOnly, slice) =
     interface IAsyncEnumerable<EventRecord> with
