@@ -63,13 +63,13 @@ type Action =
         streamId: string *
         EventData[] *
         expectedVersion: int *
-        reply: ((int * EventRecord[]) ValueOption -> unit)
+        reply: ((int * EventRecord[] * Event[]) ValueOption -> unit)
     | ReadStream of
         streamId: string *
         start: int *
         count: int *
         reply: (ValueOption<Event ReadOnlyMemory * int> -> unit)
-    | ReadAll of start: int * count: int * reply: (EventRecord ReadOnlyMemory -> unit)
+    | ReadAll of start: int * count: int * reply: (Event ReadOnlyMemory -> unit)
 
 
 [<Literal>]
@@ -77,7 +77,7 @@ let StreamsId = "$streams"
 
 let streams =
     MailboxProcessor.Start(fun mailbox ->
-        let all = AppendList<EventRecord>()
+        let all = AppendList<Event>()
         let streams = Dictionary<string, Stream>()
 
         let getStream streamId =
@@ -109,7 +109,15 @@ let streams =
                                   Event = e })
 
                         stream.Events.AddRange(Array.map Record records)
-                        all.AddRange(records)
+                        
+                        let firstAll = all.Count
+                        let allLinks = 
+                            records
+                            |> Array.mapi (fun i r ->
+                                Link { StreamId = "$all"
+                                       EventNumber = firstAll + i
+                                       OriginEvent = r })
+                        all.AddRange(allLinks)
 
                         if first = 0 && records.Length > 0 then
                             let streams = getStream StreamsId
@@ -122,7 +130,7 @@ let streams =
                             )
 
 
-                        reply (ValueSome(stream.Events.Count - 1, records))
+                        reply (ValueSome(stream.Events.Count - 1, records, allLinks))
 
                     else
                         reply (ValueNone)

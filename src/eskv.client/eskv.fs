@@ -28,6 +28,7 @@ type EventRecord =
     { EventType: string
       EventNumber: int
       Data: string
+      Stream: string
       OriginStream: string
       OriginEventNumber: int }
 
@@ -97,6 +98,12 @@ module Headers =
 
     [<Literal>]
     let EventNumber = "ESKV-Event-Number: "
+
+    [<Literal>]
+    let OriginStream = "ESKV-Origin-Stream: "
+
+    [<Literal>]
+    let OriginEventNumber = "ESKV-Origin-Event-Number: "
 
 module ExpectedVersion =
     [<Literal>]
@@ -181,6 +188,7 @@ type EskvClient(uri: Uri) =
                         { EventType = eventType
                           EventNumber = eventNumber
                           Data = data
+                          Stream = streamId
                           OriginEventNumber = originEventNumber
                           OriginStream = originStream }
                     )
@@ -982,6 +990,8 @@ type EskvClient(uri: Uri) =
                             let mutable line = reader.ReadLine()
                             let mutable eventType = null
                             let mutable eventNumber = 0
+                            let mutable originStream = null
+                            let mutable originEventNumber = 0
 
                             while not (isNull line) && line.Length > 0 do
                                 if line.StartsWith(Headers.EventType) then
@@ -994,6 +1004,17 @@ type EskvClient(uri: Uri) =
                                     | true, n -> eventNumber <- n
                                     | false, _ -> ()
 
+                                if line.StartsWith(Headers.OriginStream) then
+                                    originStream <- line.Substring(Headers.OriginStream.Length).Trim()
+
+                                if line.StartsWith(Headers.OriginEventNumber) then
+                                    let s = line.AsSpan().Slice(Headers.OriginEventNumber.Length)
+
+                                    match Int32.TryParse(s) with
+                                    | true, n -> originEventNumber <- n
+                                    | false, _ -> ()
+
+
                                 line <- reader.ReadLine()
 
 
@@ -1003,8 +1024,9 @@ type EskvClient(uri: Uri) =
                                 { EventRecord.Data = data
                                   EventType = eventType
                                   EventNumber = eventNumber
-                                  OriginEventNumber = eventNumber
-                                  OriginStream = stream }
+                                  Stream = stream
+                                  OriginEventNumber =  if isNull originStream then eventNumber else originEventNumber
+                                  OriginStream = if isNull originStream then stream else originStream }
 
                             try
                                 do! handler event
@@ -1019,7 +1041,8 @@ type EskvClient(uri: Uri) =
                 :> Task)
             |> ignore
 
-        }
+        } :> Task
+
     member this.Subscribe
         (
             stream: string,
@@ -1033,6 +1056,12 @@ type EskvClient(uri: Uri) =
                 cts.Cancel()
                 cts.Dispose()}
 
+
+    member this.SubscribeAllAsync(start, handler, cancellationToken) =
+        this.SubscribeAsync("$all", start, handler, cancellationToken)
+
+    member this.SubscribeAll(start, handler) =
+        this.Subscribe("$all", start, handler)
 
 and SliceEnumerable(client, stream, linkOnly, slice) =
     interface IAsyncEnumerable<EventRecord> with

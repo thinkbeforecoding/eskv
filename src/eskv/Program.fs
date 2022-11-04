@@ -65,7 +65,7 @@ let cts = new CancellationTokenSource()
 let data = ConcurrentDictionary<string, ConcurrentDictionary<Key, Entry>>()
 
 let sessions = ConcurrentDictionary<WebSocket, obj>()
-let subscriptions = ConcurrentDictionary<WebSocket, obj>()
+let subscriptions = ConcurrentDictionary<WebSocket, string>()
 
 
 let publish msg =
@@ -109,11 +109,16 @@ let writeEvent (ws: WebSocket) (e: Event) =
 
 let publishEvent (e: Event) =
     task {
-        for KeyValue (ws, _) in subscriptions do
-            try
-                do! writeEvent ws e
-            with ex ->
-                printfn "%O" ex
+        let streamId = 
+            match e with
+            | Record r -> r.StreamId
+            | Link l -> l.StreamId 
+        for KeyValue (ws, stream) in subscriptions do
+            if stream = streamId then
+                try
+                    do! writeEvent ws e
+                with ex ->
+                    printfn "%O" ex
     }
 
 
@@ -434,11 +439,20 @@ app.MapGet(
                     for i in 0 .. s.Length - 1 do
                         let event = s.[i]
 
-                        data.[i] <-
-                            { StreamId = event.StreamId
-                              EventNumber = event.EventNumber
-                              EventType = event.Event.Type
-                              EventData = decode event.Event.Data event.Event.ContentType }
+                        data.[i] <- 
+                            match event with
+                            | Link e ->
+                                { StreamId = e.OriginEvent .StreamId
+                                  EventNumber = e.OriginEvent.EventNumber
+                                  EventType = e.OriginEvent.Event.Type
+                                  EventData = decode e.OriginEvent.Event.Data e.OriginEvent.Event.ContentType }
+                            | Record r ->
+                                { StreamId = r.StreamId
+                                  EventNumber = r.EventNumber
+                                  EventType = r.Event.Type
+                                  EventData = decode r.Event.Data r.Event.ContentType }
+
+                                
 
                     data
 
@@ -593,7 +607,7 @@ app.MapPost(
                 let! nextExpectedVersion = Streams.appendAsync streamId (events.ToArray()) expectedVersion
 
                 match nextExpectedVersion with
-                | ValueSome (nextExpectedVersion, records) ->
+                | ValueSome (nextExpectedVersion, records, allEvents) ->
 
 
 
@@ -612,6 +626,9 @@ app.MapPost(
 
                     for e in records do
                         do! publishEvent (Event.Record e)
+
+                    for e in allEvents do
+                        do! publishEvent e
 
                     ctx.Response.StatusCode <- 204
                     ctx.Response.Headers.Add("ESKV-Expected-Version", string nextExpectedVersion)
@@ -645,11 +662,15 @@ app.MapGet(
 
             let includeLink = not (ctx.Request.Headers.ContainsKey("ESKV-Link-Only"))
 
-            match! Streams.readStreamAsync streamId start count with
-            | ValueSome (slice, lengthOfStream) ->
-                do! renderSlice ctx.Response streamId includeLink start slice lengthOfStream
+            if streamId <> "$all" then
+                match! Streams.readStreamAsync streamId start count with
+                | ValueSome (slice, lengthOfStream) ->
+                    do! renderSlice ctx.Response streamId includeLink start slice lengthOfStream
 
-            | ValueNone -> ctx.Response.StatusCode <- 404
+                | ValueNone -> ctx.Response.StatusCode <- 404
+            else
+                let! all = Streams.readAllAsync start count
+                do! renderSlice ctx.Response "$all" includeLink start all 0
 
             ()
         }
@@ -669,10 +690,19 @@ app.MapGet(
 
                 let! webSocket = ctx.WebSockets.AcceptWebSocketAsync()
 
-                subscriptions.TryAdd(webSocket, obj ()) |> ignore
+                subscriptions.TryAdd(webSocket, streamId) |> ignore
+
+                let! slice = 
+                    task {
+                        if streamId = "$all" then
+                            let! slice = Streams.readAllAsync start Int32.MaxValue
+                            return ValueSome (slice, slice.Length)
+                        else
+                            return! Streams.readStreamAsync streamId 0 Int32.MaxValue
+                     }
 
 
-                match! Streams.readStreamAsync streamId 0 Int32.MaxValue with
+                match slice with
                 | ValueSome (events, lengthOfStream) ->
 
                     for i in 0 .. events.Length - 1 do
@@ -681,18 +711,21 @@ app.MapGet(
 
                         do! writeEvent webSocket e
 
-                    let buffer = MemoryPool<byte>.Shared.Rent (4096)
-                    let mutable closed = false
+                | ValueNone ->  ()
 
-                    while not closed do
+                let buffer = MemoryPool<byte>.Shared.Rent (4096)
+                let mutable closed = false
 
-                        try
-                            let! result = webSocket.ReceiveAsync(buffer.Memory, cts.Token)
-                            ()
-                        with _ ->
-                            subscriptions.TryRemove(webSocket) |> ignore
-                            closed <- true
-                | ValueNone -> ctx.Response.StatusCode <- 404
+                while not closed do
+
+                    try
+                        let! result = webSocket.ReceiveAsync(buffer.Memory, cts.Token)
+                        ()
+                    with _ ->
+                        subscriptions.TryRemove(webSocket) |> ignore
+                        closed <- true
+
+                    
             else
                 ctx.Response.StatusCode <- 400
         }
