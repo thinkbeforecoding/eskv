@@ -298,8 +298,49 @@ The `StreamSlice` structure has the following properties:
 * `LastEventNumber`: The event number of the last returned stream creation.
 * `NextEventNumber`: The event number of the next stream creation.
 
+#### Subscribe
+
+```
+Subscribe(stream: string, start: int, handler: EventRecord -> unit) : IDisposable
+```
+
+Subscribe to `stream` from `start` event.
+
+Events already persisted are sent as soon as subscribing, new events are sent as they are added to the stream.
+
+Call the `Dispose` on the returned `IDisposable`, to stop the subscription.
 
 
+```
+SubscribeAsync(stream: string, start: int, handler: EventRecord -> Task, cancellationToken: CancellationToken) : Task
+```
+
+Subscribe to `stream` from `start` event asynchronously.
+
+Events already persisted are sent as soon as subscribing, new events are sent as they are added to the stream.
+
+Cancel the `cancellationToken` to stop the subscription.
+
+#### SubscribeAll
+
+```
+SubscribeAll(start: int, handler: EventRecord -> unit) : IDisposable
+```
+
+Subscribe to all events from `start` event.
+
+Events already persisted are sent as soon as subscribing, new events are sent as they are added to the stream.
+
+Call the `Dispose` on the returned `IDisposable`, to stop the subscription.
 
 
+```
+SubscribeAllAsync(start: int, handler: EventRecord -> Task, cancellationToken: CancellationToken) : Task
+```
+
+Subscribe to all events from `start` event asynchronously.
+
+Events already persisted are sent as soon as subscribing, new events are sent as they are added to the stream.
+
+Cancel the `cancellationToken` to stop the subscription.
 
