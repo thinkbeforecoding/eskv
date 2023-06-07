@@ -16,14 +16,18 @@
     <PackageReference Include="Fable.Browser.Css" Version="2.2.0" />
     <PackageReference Include="Fable.Browser.WebSocket" Version="1.2.0" />
     <PackageReference Include="Fable.Elmish" Version="3.1.0" />
-    <PackageReference Include="Fable.Elmish.Browser" Version="3.0.4" />
+    <PackageReference Include="Fable.Elmish.Browser" Version="3.0.5" />
     <PackageReference Include="Fable.Elmish.HMR" Version="5.2.0" />
     <PackageReference Include="Fable.Elmish.React" Version="3.0.1" />
-    <PackageReference Include="Fable.Fetch" Version="2.4.0" />
-    <PackageReference Include="Feliz" Version="1.61.0" />
-    <PackageReference Include="Feliz.Bulma" Version="2.18.0" />
+    <PackageReference Include="Fable.Fetch" Version="2.6.0" />
+    <PackageReference Include="Feliz" Version="1.68.0" />
+    <PackageReference Include="Feliz.Bulma" Version="2.19.0" />
     <PackageReference Include="Feliz.Bulma.Tooltip" Version="2.0.0" />
     <PackageReference Include="Thoth.Json" Version="7.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Update="Nerdbank.GitVersioning" Version="3.5.119" />
   </ItemGroup>
 
 </Project>

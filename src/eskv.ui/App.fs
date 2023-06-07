@@ -600,6 +600,10 @@ let view model dispatch =
                                         prop.href "https://twitter.com/thinkb4coding" ]
                                   Html.text " "
                                   Html.a
+                                      [ prop.children [ Bulma.icon [ Html.i [ prop.className "fab fa-mastodon" ] ] ]
+                                        prop.href "https://mastodon.social/@thinkb4coding" ]
+                                  Html.text " "
+                                  Html.a
                                       [ prop.children [ Bulma.icon [ Html.i [ prop.className "fab fa-github" ] ] ]
                                         prop.href "https://github.com/thinkbeforecoding/eskv" ] ] ] ] ] ]
 
