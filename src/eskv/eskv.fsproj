@@ -21,10 +21,10 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="..\..\dist\style.css" Link="wwwroot\content\style.css">
+    <EmbeddedResource Include="..\eskv.ui\dist\style.css" Link="wwwroot\content\style.css">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
-    <EmbeddedResource Include="..\..\dist\App.fs.js" Link="wwwroot\content\App.fs.js">
+    <EmbeddedResource Include="..\eskv.ui\dist\App.fs.js" Link="wwwroot\content\App.fs.js">
       <CopyToOutputDirectory>Never</CopyToOutputDirectory>
     </EmbeddedResource>
     <EmbeddedResource Include="wwwroot\favicon.ico" />
