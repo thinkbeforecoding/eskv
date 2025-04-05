@@ -1,5 +1,7 @@
 # _eskv_
 
+This code has moved to Codeberg: https://codeberg.org/thinkbeforecoding/eskv
+
 [![build](https://github.com/thinkbeforecoding/eskv/actions/workflows/dotnet.yml/badge.svg)](https://github.com/thinkbeforecoding/eskv/actions/workflows/dotnet.yml)
 
 _eskv_ is an in-memory key/value and event store, for educational purpose.
